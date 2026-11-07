@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PegawaiKu
 
-## Getting Started
+Platform "pegawai AI": marketplace 28 agent spesialis (marketing, desain, video, HR, finance, builder) yang bisa direkrut ke project, diberi brief lewat chat, dengan Drive, task board, dan kredit prabayar.
 
-First, run the development server:
+Stack: **Next.js 16 (App Router) · Tailwind 4 · Supabase (Postgres, Auth, Storage) · Claude API**.
+
+## Fitur versi 1 (MVP inti)
+
+- Auth email/password + Google (Supabase Auth); organisasi & project otomatis dibuat saat daftar, bonus 2 kredit.
+- Multi-tenant: organisasi → project; switcher di sidebar.
+- Marketplace agent: 28 agent dari folder `skills/` (SKILL.md), filter kategori, pencarian, halaman profil ala sosmed (Feed / Job desk), bookmark, **Rekrut** ke project.
+- Chat dengan agent: streaming dari Claude, SKILL.md menjadi system prompt, riwayat tersimpan, biaya dipotong dari kredit per pesan (token × harga × margin).
+- Drive per project (Supabase Storage bucket `drive`, signed URL).
+- Task board kanban sederhana (antre → berjalan → review → selesai / terhambat).
+- Billing: saldo kredit, riwayat transaksi, redeem voucher. Payment gateway belum dipasang (lihat Roadmap).
+
+## Menjalankan secara lokal
+
+### 1. Supabase
+
+1. Buat project di https://supabase.com (gratis).
+2. Buka **SQL Editor**, tempel isi `supabase/migrations/0001_init.sql`, jalankan. Ini membuat tabel, RLS, trigger `handle_new_user`, fungsi kredit, bucket `drive`, dan voucher uji `PEGAWAIKU-TRIAL`.
+3. **Authentication → Providers**: aktifkan Email. Untuk Google, isi Client ID/Secret dari Google Cloud Console dan tambahkan redirect `https://<project>.supabase.co/auth/v1/callback`.
+4. **Authentication → URL Configuration**: Site URL `http://localhost:3000`, tambahkan `http://localhost:3000/auth/callback` ke Redirect URLs.
+5. **Project Settings → API**: salin `Project URL`, `anon public`, dan `service_role` (rahasia).
+
+### 2. Anthropic
+
+Buat API key di https://console.anthropic.com → API Keys.
+
+### 3. Env & jalankan
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local   # isi semua nilainya
+npm install
+npm run seed:agents          # isi tabel agents dari folder skills/ (pakai service role key)
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Daftar akun baru → organisasi, project pertama, dan 2 kredit dibuat otomatis → buka **Agent**, rekrut, lalu **Mulai bekerja**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Struktur
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+skills/<slug>/SKILL.md     28 agent (frontmatter metadata + system prompt)
+skills/agents.json         katalog hasil generate (dipakai landing page)
+supabase/migrations/       skema database
+scripts/seed-agents.ts     seed katalog ke Supabase
+src/app/(auth)/            login, register, actions
+src/app/app/               area aplikasi (layout sidebar, home, agent, chat, drive, tasks, billing)
+src/app/api/chat           streaming Claude + potong kredit
+src/app/api/drive/upload   unggah file ke Storage
+src/lib/context.ts         user/org/project aktif (cookie pk_org, pk_project)
+src/lib/supabase/          klien browser, server, proxy (auth guard)
+public/brand/              logo (mark, horizontal light/dark)
+public/agents/             avatar agent
+```
 
-## Learn More
+## Menambah agent
 
-To learn more about Next.js, take a look at the following resources:
+Buat folder `skills/<slug>/SKILL.md` mengikuti format yang ada (lihat `skills/README` di repo katalog), jalankan `npm run seed:agents`, tambahkan avatar `public/agents/<slug>.svg`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Harga kredit
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`src/lib/utils.ts` → `PRICING`: harga input/output per juta token (USD) dan `markup`. 1 kredit = 1 USD. Kurs rupiah tampilan: env `NEXT_PUBLIC_IDR_PER_CREDIT` (default 17000).
 
-## Deploy on Vercel
+## Roadmap (belum ada di versi ini)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Payment gateway (Midtrans/Xendit) → otomatis `apply_credit` lewat webhook.
+- MCP server (`/api/mcp`) agar agent bisa dipakai dari Claude Desktop/Claude Code.
+- Image/Video Studio lewat API model pihak ketiga, job queue.
+- Konektor aplikasi (Composio/Pipedream), tool per agent (landing page publish, riset iklan).
+- Undang anggota organisasi, peran admin.
+- Avatar/cover agent hasil desain (saat ini inisial).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deploy
+
+Vercel: import repo, isi env yang sama, set `NEXT_PUBLIC_SITE_URL` ke domain produksi dan tambahkan `https://<domain>/auth/callback` ke Redirect URLs Supabase.

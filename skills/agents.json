@@ -1,0 +1,377 @@
+{
+  "version": "1.0.0",
+  "count": 28,
+  "agents": [
+    {
+      "name": "aldi-market-research-strategist",
+      "display_name": "Aldi",
+      "title": "Market Research Strategist",
+      "category": "marketing",
+      "description": "Dipakai saat user ingin menemukan pain point nyata yang bisa dimonetisasi di niche tertentu — lewat riset komunitas, ulasan, dan pola pencarian — lalu memetakan persona, memberi skor pain point (frekuensi, intensitas, kemauan bayar), dan mengusulkan ide produk digital beserta cara validasi cepat. Trigger: \"cari masalah yang bisa dijual di niche ini\", \"riset pasar untuk ide produk digital\", \"pain point audiens saya apa\", \"validasi ide ini\", \"find monetizable pain points in this niche\".",
+      "language": "id",
+      "requires_tools": [
+        "web_search"
+      ],
+      "version": "1.0.0",
+      "path": "skills/aldi-market-research-strategist/SKILL.md",
+      "body_lines": 109
+    },
+    {
+      "name": "alex-storyboard-specialist",
+      "display_name": "Alex",
+      "title": "Storyboard Specialist",
+      "category": "graphic-designer",
+      "description": "Dipakai saat user punya ide, naskah, atau brief video dan ingin storyboard terstruktur berupa daftar shot bernomor dengan durasi, ukuran shot, gerakan kamera, aksi, dialog/VO, teks overlay, serta prompt gambar per frame untuk pratinjau. Trigger: \"bikin storyboard\", \"pecah skrip ini jadi shot\", \"shot list untuk video\", \"storyboard for a 30-second ad\", \"visualisasikan naskah ini\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/alex-storyboard-specialist/SKILL.md",
+      "body_lines": 124
+    },
+    {
+      "name": "arya-image-prompt-orchestrator",
+      "display_name": "Arya",
+      "title": "Image Prompt Orchestrator",
+      "category": "graphic-designer",
+      "description": "Dipakai saat user ingin membuat gambar dengan model text-to-image atau image-to-image (Gemini Nano Banana) dan butuh prompt yang matang, rasio aspek yang tepat, serta konsistensi karakter antar seri gambar. Trigger: \"buatkan prompt gambar\", \"generate gambar untuk feed/story\", \"bikin seri gambar dengan karakter yang sama\", \"ubah foto ini jadi...\".",
+      "language": "id",
+      "requires_tools": [
+        "ask_user"
+      ],
+      "model_hint": "Gemini Nano Banana",
+      "version": "1.0.0",
+      "path": "skills/arya-image-prompt-orchestrator/SKILL.md",
+      "body_lines": 119
+    },
+    {
+      "name": "bejo-image-poster-specialist",
+      "display_name": "Bejo",
+      "title": "Image Poster Specialist",
+      "category": "graphic-designer",
+      "description": "Dipakai saat user ingin membuat poster, flyer, atau gambar feed promosi (event, diskon, peluncuran produk) yang memuat teks terstruktur seperti judul, info kunci, dan CTA. Trigger: \"bikin poster acara\", \"flyer promo\", \"desain feed diskon\", \"make a poster for...\", \"poster seminar tanggal...\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/bejo-image-poster-specialist/SKILL.md",
+      "body_lines": 114
+    },
+    {
+      "name": "bimo-ai-project-manager",
+      "display_name": "Bimo",
+      "title": "AI Project Manager",
+      "category": "management",
+      "description": "Dipakai saat permintaan user melibatkan beberapa jenis pekerjaan sekaligus atau belum jelas agent mana yang cocok: Bimo mengubah permintaan menjadi rencana kerja, memecahnya ke task, memilih agent spesialis dari katalog, mendelegasikan, melacak status, dan merangkum hasil akhir. Trigger: \"tolong urus dari awal sampai selesai\", \"bikin kampanye lengkap\", \"saya butuh tim untuk project ini\", \"siapa yang harus kerjakan ini?\", \"plan and coordinate this project\", \"break this down and delegate\".",
+      "language": "id",
+      "requires_tools": [
+        "delegate_agent",
+        "task_create",
+        "ask_user"
+      ],
+      "version": "1.0.0",
+      "path": "skills/bimo-ai-project-manager/SKILL.md",
+      "body_lines": 150
+    },
+    {
+      "name": "bram-direct-response-marketer",
+      "display_name": "Bram",
+      "title": "Direct Response Marketer",
+      "category": "marketing",
+      "description": "Dipakai saat user ingin membangun penawaran (offer) yang kuat — value stack, harga, bonus, garansi, urgency — dan menurunkannya menjadi matriks 25 ide iklan (5 angle × 5 gaya iklan) siap diproduksi. Trigger: \"bikin offer yang nggak bisa ditolak\", \"susun value stack\", \"ide iklan sebanyak-banyaknya buat produk ini\", \"garansi apa yang cocok\", \"build my offer and ad angles\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/bram-direct-response-marketer/SKILL.md",
+      "body_lines": 117
+    },
+    {
+      "name": "dewi-hr-recruiter",
+      "display_name": "Dewi",
+      "title": "HR Recruiter",
+      "category": "hr",
+      "description": "Dipakai saat user butuh bantuan rekrutmen: menyusun job description dari brief singkat, membuat rubrik kriteria (must-have/nice-to-have dengan bobot), menyaring kandidat dari CV atau teks yang diberikan dengan skor dan alasan, atau menyusun daftar pertanyaan wawancara per posisi. Trigger: \"bikin job desc\", \"bantu screening CV ini\", \"rubrik penilaian kandidat\", \"pertanyaan interview untuk posisi X\", \"write a job description for\", \"rank these candidates\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/dewi-hr-recruiter/SKILL.md",
+      "body_lines": 119
+    },
+    {
+      "name": "dian-cinematic-broll-director",
+      "display_name": "Dian",
+      "title": "Cinematic B-Roll Director",
+      "category": "video-editor",
+      "description": "Dipakai saat user punya brief produk, tema, atau mood dan butuh paket 20–60 prompt gambar dan video B-roll sinematik yang konsisten (palet warna, lensa, grading, karakter) untuk model text-to-video atau image-to-video. Trigger: \"bikin B-roll untuk produk ini\", \"prompt footage sinematik\", \"stok visual buat video brand\", \"generate 30 b-roll prompts\", \"footage pendukung buat VO ini\".",
+      "language": "id",
+      "requires_tools": [
+        "ask_user"
+      ],
+      "model_hint": "text-to-video & image-to-video models (generic)",
+      "version": "1.0.0",
+      "path": "skills/dian-cinematic-broll-director/SKILL.md",
+      "body_lines": 119
+    },
+    {
+      "name": "fani-finance-analyst",
+      "display_name": "Fani",
+      "title": "Finance Analyst",
+      "category": "finance",
+      "description": "Dipakai saat user menyerahkan data keuangan berupa tabel, CSV, atau teks (daftar transaksi, pengeluaran, mutasi, laporan sederhana) dan ingin tahu mana yang tidak wajar (anomali, duplikasi, di luar kebijakan/anggaran), ringkasan P&L atau arus kas, pembagian per kategori, tren bulanan, dan rekomendasi penghematan. Trigger: \"cek pengeluaran ini ada yang aneh?\", \"ringkas laporan keuangan bulan ini\", \"bikin P&L dari data ini\", \"tren biaya 6 bulan\", \"review these expenses\", \"where can we cut costs\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/fani-finance-analyst/SKILL.md",
+      "body_lines": 115
+    },
+    {
+      "name": "farid-meta-ads-media-buyer",
+      "display_name": "Farid",
+      "title": "Meta Ads Media Buyer",
+      "category": "marketing",
+      "description": "Dipakai saat user ingin menyusun struktur kampanye Meta Ads (Facebook/Instagram) dari nol, menentukan budget harian dan targeting, membuat naming convention, atau mengaudit performa iklan dari data metrik (CPM, CTR, CPC, CPA, ROAS, frequency) dengan rekomendasi aksi. Trigger: \"susun struktur campaign Meta Ads\", \"audit iklan FB saya\", \"budget harian berapa\", \"kenapa CPA naik\", \"set up Meta ads structure\".",
+      "language": "id",
+      "requires_tools": [
+        "meta_ads_api"
+      ],
+      "version": "1.0.0",
+      "path": "skills/farid-meta-ads-media-buyer/SKILL.md",
+      "body_lines": 136
+    },
+    {
+      "name": "hadi-instagram-scripting-specialist",
+      "display_name": "Hadi",
+      "title": "Instagram Scripting Specialist",
+      "category": "marketing",
+      "description": "Dipakai saat user butuh skrip konten organik Instagram — Reels (hook, body, CTA, petunjuk visual), carousel slide per slide, caption dengan hashtag, atau kalender konten mingguan — yang disesuaikan dengan niche dan persona brand. Trigger: \"bikin skrip reels\", \"konten carousel 7 slide\", \"caption buat postingan ini\", \"jadwal konten IG seminggu\", \"write an Instagram reel script\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/hadi-instagram-scripting-specialist/SKILL.md",
+      "body_lines": 116
+    },
+    {
+      "name": "hani-video-ad-generator",
+      "display_name": "Hani",
+      "title": "Video Ad Generator",
+      "category": "video-editor",
+      "description": "Dipakai saat user punya brief kreatif produk dan ingin satu iklan video pendek dibuat end-to-end: pilih template gaya (UGC, unboxing, testimonial, product hero, before-after), susun skrip per scene, prompt video per scene, spesifikasi teknis, lalu jalankan pembuatan video per scene lewat tool jika tersedia. Trigger: \"bikin iklan video buat produk ini\", \"generate video ad\", \"video UGC untuk TikTok Ads\", \"buatin iklan 15 detik gaya unboxing\", \"jadikan brief ini video\".",
+      "language": "id",
+      "requires_tools": [
+        "video_generate",
+        "ask_user"
+      ],
+      "model_hint": "text-to-video (generic)",
+      "version": "1.0.0",
+      "path": "skills/hani-video-ad-generator/SKILL.md",
+      "body_lines": 114
+    },
+    {
+      "name": "kira-image-prompt-engineer",
+      "display_name": "Kira",
+      "title": "AI Image Prompt Engineer",
+      "category": "graphic-designer",
+      "description": "Dipakai saat user punya ide gambar singkat dan ingin segera mendapat satu prompt text-to-image atau image-to-image yang padat anchor visual plus JSON siap kirim, tanpa proses tanya-jawab panjang. Trigger: \"bikin prompt gambar\", \"tolong prompt-kan ide ini\", \"prompt untuk foto produk\", \"write an image prompt for...\".",
+      "language": "id",
+      "requires_tools": [],
+      "model_hint": "Gemini Nano Banana",
+      "version": "1.0.0",
+      "path": "skills/kira-image-prompt-engineer/SKILL.md",
+      "body_lines": 110
+    },
+    {
+      "name": "luna-ai-pose-director",
+      "display_name": "Luna",
+      "title": "AI Pose Director",
+      "category": "graphic-designer",
+      "description": "Dipakai saat user mengunggah satu foto orang dan ingin enam variasi potret realistis (image-to-image) dengan pose, sudut, dan ekspresi berbeda tanpa mengubah wajah, pakaian, dan proporsi tubuh. Trigger: \"buat variasi pose dari foto ini\", \"bikin 6 foto beda angle\", \"make different poses from this photo\", \"foto profil beberapa versi\".",
+      "language": "id",
+      "requires_tools": [
+        "ask_user"
+      ],
+      "model_hint": "Gemini Nano Banana",
+      "version": "1.0.0",
+      "path": "skills/luna-ai-pose-director/SKILL.md",
+      "body_lines": 118
+    },
+    {
+      "name": "maya-ebook-content-writer",
+      "display_name": "Maya",
+      "title": "Ebook & Content Writer",
+      "category": "marketing",
+      "description": "Dipakai saat user ingin menulis ebook, panduan panjang, atau lead magnet dari sebuah judul atau topik: Maya menyusun outline bab dan sub-bab, meminta konfirmasi outline, lalu menulis isi tiap bab lengkap dengan ringkasan, latihan atau checklist, dan menyiapkannya untuk diekspor ke .docx lewat drive_save. Trigger: \"tulis ebook tentang\", \"bikin panduan PDF 30 halaman\", \"lead magnet buat jualan kursus\", \"outline buku saya\", \"write an ebook on\", \"turn my notes into an ebook\".",
+      "language": "id",
+      "requires_tools": [
+        "drive_save"
+      ],
+      "version": "1.0.0",
+      "path": "skills/maya-ebook-content-writer/SKILL.md",
+      "body_lines": 129
+    },
+    {
+      "name": "meda-meta-andromeda-strategist",
+      "display_name": "Meda",
+      "title": "Meta Ads Algorithm Strategist",
+      "category": "marketing",
+      "description": "Dipakai saat user ingin strategi iklan Meta yang selaras dengan sistem penayangan berbasis machine learning modern — broad targeting, Advantage+, konsolidasi campaign, diversifikasi kreatif, dan kualitas sinyal konversi — bukan setup teknis harian. Trigger: \"strategi iklan Meta zaman sekarang\", \"kenapa targeting detail nggak jalan lagi\", \"berapa kreatif yang harus saya punya\", \"Advantage+ shopping worth it?\", \"struktur campaign paling simpel\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/meda-meta-andromeda-strategist/SKILL.md",
+      "body_lines": 116
+    },
+    {
+      "name": "nathan-vibe-coding-builder",
+      "display_name": "Nathan",
+      "title": "Vibe Coding Builder",
+      "category": "builder",
+      "description": "Dipakai saat user mendeskripsikan aplikasi dalam satu-dua kalimat dan ingin langsung punya project yang jalan: scaffold web (Next.js + shadcn/ui) atau mobile (React Native + Expo), struktur folder, halaman dan komponen awal, auth, database, pembayaran, lalu panduan klik per klik mengambil API key layanan pihak ketiga. Trigger: \"bikinin aplikasi buat ...\", \"scaffold project\", \"mulai dari nol aplikasi kasir\", \"build me an app that\", \"set up Next.js with auth and Stripe\", \"saya nggak bisa coding, tolong jadikan ini aplikasi\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/nathan-vibe-coding-builder/SKILL.md",
+      "body_lines": 120
+    },
+    {
+      "name": "niko-video-style-analyst",
+      "display_name": "Niko",
+      "title": "Video Style Analyst",
+      "category": "video-editor",
+      "description": "Dipakai saat user memberi deskripsi, transkrip, atau rangkaian frame dari sebuah video referensi dan ingin gayanya dibedah menjadi template yang bisa dipakai ulang: struktur hook, pacing, pola shot, grading, tipografi, musik, dan gaya VO, lengkap dengan placeholder untuk produk atau setting lain. Trigger: \"analisis gaya video ini\", \"kenapa video ini enak ditonton\", \"bikin template dari video referensi\", \"break down this video's style\", \"tiru feel-nya tapi buat produk saya\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/niko-video-style-analyst/SKILL.md",
+      "body_lines": 109
+    },
+    {
+      "name": "raka-ad-clone-specialist",
+      "display_name": "Raka",
+      "title": "Ad Clone Specialist",
+      "category": "video-editor",
+      "description": "Dipakai saat user punya iklan video yang terbukti berhasil (milik pihak lain atau milik sendiri) dalam bentuk deskripsi atau transkrip, dan ingin formulanya (hook, struktur, angle, CTA) diekstrak lalu diadaptasi untuk produk BERBEDA milik user menjadi skrip baru, shot list, dan prompt video. Trigger: \"iklan ini bagus, bikin versi buat produkku\", \"adaptasi iklan kompetitor\", \"pakai formula iklan ini untuk jasa kami\", \"clone this ad for my product\", \"iklan ini kenapa jalan, dan gimana buat versi kami\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/raka-ad-clone-specialist/SKILL.md",
+      "body_lines": 117
+    },
+    {
+      "name": "rama-image-ad-template-cloner",
+      "display_name": "Rama",
+      "title": "Image Ad Template Cloner",
+      "category": "graphic-designer",
+      "description": "Dipakai HANYA saat user melampirkan gambar iklan yang sudah ada dan ingin membongkarnya menjadi template prompt dengan placeholder agar bisa dipakai ulang untuk produk lain. Trigger: \"tiru layout iklan ini\", \"jadikan iklan ini template\", \"reverse-engineer this ad\", \"pakai gaya iklan ini buat produk saya\". Bukan untuk membuat iklan baru dari nol.",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/rama-image-ad-template-cloner/SKILL.md",
+      "body_lines": 109
+    },
+    {
+      "name": "rifqy-seo-specialist",
+      "display_name": "Rifqy",
+      "title": "SEO Specialist",
+      "category": "marketing",
+      "description": "Dipakai saat user ingin riset keyword, mengelompokkan topik (cluster), membuat outline artikel SEO, checklist on-page (title, meta, heading, internal link, schema), atau mengaudit satu halaman dari URL/HTML yang diberikan. Trigger: \"riset keyword untuk niche ini\", \"outline artikel SEO\", \"audit SEO halaman ini\", \"kenapa artikel saya nggak ranking\", \"keyword research for my blog\".",
+      "language": "id",
+      "requires_tools": [
+        "web_search",
+        "web_fetch"
+      ],
+      "version": "1.0.0",
+      "path": "skills/rifqy-seo-specialist/SKILL.md",
+      "body_lines": 137
+    },
+    {
+      "name": "rio-instagram-media-specialist",
+      "display_name": "Rio",
+      "title": "Instagram Media Specialist",
+      "category": "marketing",
+      "description": "Dipakai saat user memberi URL post, Reels, carousel, story highlight, atau profil Instagram publik dan ingin medianya diambil lalu disimpan ke Drive project, disertai ringkasan metadata (caption, tanggal, jenis, jumlah item). Trigger: \"simpan reels ini ke drive\", \"download carousel ini\", \"ambil foto profil akun ini\", \"arsipkan highlight ini\", \"fetch this Instagram post\". Hanya untuk referensi/analisis atau konten milik user sendiri.",
+      "language": "id",
+      "requires_tools": [
+        "instagram_media_fetch",
+        "drive_save"
+      ],
+      "version": "1.0.0",
+      "path": "skills/rio-instagram-media-specialist/SKILL.md",
+      "body_lines": 91
+    },
+    {
+      "name": "sari-meta-sales-copywriter",
+      "display_name": "Sari",
+      "title": "Meta Sales Copywriter",
+      "category": "sales",
+      "description": "Dipakai saat user butuh teks iklan Meta (Facebook/Instagram) siap tempel — Primary Text beberapa panjang, Headline, Description, CTA, dan 5 hook pembuka — dalam bahasa Indonesia natural, sesuai batas karakter, dengan variasi untuk audiens cold/warm/hot. Trigger: \"tulis copy iklan FB\", \"bikin caption iklan buat produk ini\", \"headline iklan Instagram\", \"kasih 5 hook\", \"write Meta ad copy\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/sari-meta-sales-copywriter/SKILL.md",
+      "body_lines": 128
+    },
+    {
+      "name": "vera-landing-page-builder",
+      "display_name": "Vera",
+      "title": "Landing Page Builder",
+      "category": "builder",
+      "description": "Dipakai saat user punya brief singkat tentang produk, jasa, acara, atau pre-order dan ingin landing page HTML satu file yang siap tayang: hero, manfaat, bukti sosial, FAQ, CTA, responsif, dengan meta tag; disimpan lewat landing_save untuk preview dan dipublikasikan lewat landing_publish setelah user setuju. Trigger: \"bikin landing page\", \"halaman pre-order\", \"halaman pendaftaran webinar\", \"build a landing page for\", \"one-page site for my product\", \"halaman jualan buat kursus\".",
+      "language": "id",
+      "requires_tools": [
+        "landing_save",
+        "landing_publish"
+      ],
+      "version": "1.0.0",
+      "path": "skills/vera-landing-page-builder/SKILL.md",
+      "body_lines": 116
+    },
+    {
+      "name": "vika-seedance-video-director",
+      "display_name": "Vika",
+      "title": "Seedance Video Director",
+      "category": "video-editor",
+      "description": "Dipakai saat user ingin mengubah ide menjadi prompt video sinematik untuk Seedance 2.0 dengan karakter yang konsisten antar klip (character card) dan format konten berulang seperti seri episodik, maskot brand, atau sitkom pendek. Trigger: \"bikin prompt Seedance\", \"karakter konsisten buat seri video\", \"episode 1 sampai 5 untuk maskot kami\", \"character card for my AI series\", \"lanjutkan episode berikutnya\".",
+      "language": "id",
+      "requires_tools": [],
+      "model_hint": "Seedance 2.0",
+      "version": "1.0.0",
+      "path": "skills/vika-seedance-video-director/SKILL.md",
+      "body_lines": 115
+    },
+    {
+      "name": "wahyu-motion-graphics-specialist",
+      "display_name": "Wahyu",
+      "title": "Motion Graphics Specialist",
+      "category": "video-editor",
+      "description": "Dipakai saat user butuh rancangan motion graphics seperti kinetic typography, lower-third, intro logo, animated explainer, atau infografis bergerak, lengkap dengan spesifikasi animasi (durasi, easing, keyframe, transisi), prompt untuk model video, dan arahan eksekusi di After Effects, CapCut, atau Canva. Trigger: \"bikin motion graphics\", \"animasi teks untuk quote ini\", \"lower third buat podcast\", \"animated explainer 30 detik\", \"intro logo 3 detik\", \"spec animasi untuk editor\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/wahyu-motion-graphics-specialist/SKILL.md",
+      "body_lines": 112
+    },
+    {
+      "name": "yusuf-seedance-art-specialist",
+      "display_name": "Yusuf",
+      "title": "Seedance Art Specialist",
+      "category": "graphic-designer",
+      "description": "Dipakai saat user ingin gambar bergaya artistik atau ilustratif (anime, 3D stylized, painterly, pixel art, isometric, flat vector, dsb.) untuk model Seedance dan model gambar serupa, termasuk seri ilustrasi dengan karakter yang konsisten. Trigger: \"bikin ilustrasi gaya anime\", \"gambar isometric kota\", \"style pixel art\", \"ilustrasi karakter konsisten untuk komik/seri\", \"painterly concept art\".",
+      "language": "id",
+      "requires_tools": [],
+      "model_hint": "Seedance",
+      "version": "1.0.0",
+      "path": "skills/yusuf-seedance-art-specialist/SKILL.md",
+      "body_lines": 119
+    },
+    {
+      "name": "zara-ad-script-specialist",
+      "display_name": "Zara",
+      "title": "Ad Script Specialist",
+      "category": "video-editor",
+      "description": "Dipakai saat user butuh skrip iklan video pendek 15, 30, atau 60 detik untuk TikTok, Reels, atau placement iklan berbayar, dengan hook 3 detik, masalah, solusi, bukti, dan CTA, beberapa variasi hook, serta tabel waktu-visual-audio-teks siap produksi. Trigger: \"tulis skrip iklan 30 detik\", \"naskah TikTok ads buat produk ini\", \"bikin 3 hook alternatif\", \"script for a 15-second reel ad\", \"skrip VO iklan dengan CTA\".",
+      "language": "id",
+      "requires_tools": [],
+      "version": "1.0.0",
+      "path": "skills/zara-ad-script-specialist/SKILL.md",
+      "body_lines": 119
+    }
+  ]
+}
