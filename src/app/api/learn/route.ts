@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logEvent, describeError } from "@/lib/log";
 import { getContext } from "@/lib/context";
 import { llmStep, splitModelId, type ChatMsg } from "@/lib/llm";
 import { TOOL_DEFS, runTool, type ToolCtx } from "@/lib/agent-tools";
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
   ]);
   if (!agent) return NextResponse.json({ error: "agent tidak ditemukan" }, { status: 404 });
   const keys: Record<string, string> = Object.fromEntries((keyRows ?? []).map((k) => [k.provider, k.secret]));
-  const { keyProvider, model } = splitModelId(orgRow?.chat_model || "anthropic/claude-sonnet-4-5");
+  const { keyProvider, model } = splitModelId(orgRow?.chat_model || "anthropic/claude-sonnet-5-5");
   const apiKey = keys[keyProvider] ?? (keyProvider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined);
   if (!apiKey) return NextResponse.json({ error: `Kunci API ${keyProvider} belum diatur.` }, { status: 400 });
 
@@ -47,7 +48,9 @@ Langkah wajib: (1) web_search 2-4 kueri berbeda (ID dan EN), (2) web_fetch 2-3 s
       summary = "";
     }
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const { message, detail } = describeError(e);
+    await logEvent("error", "api:learn", message, { ...detail, topic, agent: agent.display_name }, org.id);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
   if (!learned) return NextResponse.json({ error: "Agent tidak berhasil menyimpan pengetahuan. Coba topik yang lebih spesifik." }, { status: 500 });
   return NextResponse.json({ ok: true, summary });

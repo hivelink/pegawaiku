@@ -31,9 +31,9 @@ export function formatRupiah(n: number) {
 
 /** Biaya kredit per token (1 kredit = 1 USD). Sesuaikan dengan harga model. */
 export const PRICING = {
-  model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
-  inputPerMillion: 3,   // USD
-  outputPerMillion: 15, // USD
+  model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5-5",
+  inputPerMillion: 2,   // USD (Claude Sonnet 5.5)
+  outputPerMillion: 10, // USD
   markup: 1.5,          // margin platform
 };
 

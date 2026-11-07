@@ -5,8 +5,30 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getContext } from "@/lib/context";
+import { logEvent, describeError, isNextSignal } from "@/lib/log";
 
-export async function switchProject(formData: FormData) {
+/**
+ * Pembungkus aksi server: setiap error dicatat ke app_logs (sumber = nama aksi) lalu
+ * diteruskan ke error boundary halaman — tidak ada lagi "hang" tanpa pesan.
+ * Sinyal internal Next (redirect/notFound) diteruskan apa adanya.
+ */
+function guarded<T extends (fd: FormData) => Promise<void>>(name: string, fn: T): T {
+  return (async (fd: FormData): Promise<void> => {
+    const t0 = Date.now();
+    try {
+      await fn(fd);
+    } catch (e) {
+      if (isNextSignal(e)) throw e;
+      const { message, detail } = describeError(e);
+      const input: Record<string, string> = {};
+      fd.forEach((v, k) => { if (typeof v === "string" && !/secret|password|key/i.test(k)) input[k] = v.slice(0, 200); });
+      await logEvent("error", `action:${name}`, message, { ...detail, input, ms: Date.now() - t0 });
+      throw new Error(`${name} gagal: ${message}`);
+    }
+  }) as T;
+}
+
+async function _switchProject(formData: FormData) {
   const id = String(formData.get("project_id"));
   const c = await cookies();
   c.set("pk_project", id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
@@ -14,7 +36,15 @@ export async function switchProject(formData: FormData) {
   redirect("/app/project");
 }
 
-export async function updateProjectMeta(formData: FormData) {
+async function _openProjectSettings(formData: FormData) {
+  const id = String(formData.get("project_id"));
+  const c = await cookies();
+  c.set("pk_project", id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
+  revalidatePath("/app", "layout");
+  redirect("/app/project/settings");
+}
+
+async function _updateProjectMeta(formData: FormData) {
   const { supabase, project } = await getContext();
   if (!project) return;
   const due = String(formData.get("due_date") ?? "").trim();
@@ -30,7 +60,7 @@ export async function updateProjectMeta(formData: FormData) {
   revalidatePath("/app/project");
 }
 
-export async function switchOrg(formData: FormData) {
+async function _switchOrg(formData: FormData) {
   const id = String(formData.get("org_id"));
   const c = await cookies();
   c.set("pk_org", id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
@@ -38,7 +68,7 @@ export async function switchOrg(formData: FormData) {
   revalidatePath("/app");
 }
 
-export async function createProject(formData: FormData) {
+async function _createProject(formData: FormData) {
   const { supabase, org, user } = await getContext();
   if (!org) throw new Error("Organisasi tidak ditemukan");
   const name = String(formData.get("name") ?? "").trim();
@@ -55,7 +85,7 @@ export async function createProject(formData: FormData) {
   redirect("/app/project");
 }
 
-export async function hireAgent(formData: FormData) {
+async function _hireAgent(formData: FormData) {
   const { supabase, project, user } = await getContext();
   if (!project) redirect("/app?error=project");
   const agentId = String(formData.get("agent_id"));
@@ -68,7 +98,7 @@ export async function hireAgent(formData: FormData) {
   redirect(`/app/agent/${slug}?hired=1`);
 }
 
-export async function toggleBookmark(formData: FormData) {
+async function _toggleBookmark(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -80,7 +110,7 @@ export async function toggleBookmark(formData: FormData) {
   revalidatePath(`/app/agent/${slug}`);
 }
 
-export async function startConversation(formData: FormData) {
+async function _startConversation(formData: FormData) {
   const { supabase, project, user } = await getContext();
   if (!project) redirect("/app?error=project");
   const agentId = String(formData.get("agent_id"));
@@ -93,7 +123,7 @@ export async function startConversation(formData: FormData) {
   redirect(`/app/chat/${data.id}`);
 }
 
-export async function redeemVoucher(formData: FormData) {
+async function _redeemVoucher(formData: FormData) {
   const { supabase, org } = await getContext();
   if (!org) return;
   const code = String(formData.get("code") ?? "").trim();
@@ -103,7 +133,7 @@ export async function redeemVoucher(formData: FormData) {
   redirect("/app/billing?ok=1");
 }
 
-export async function createTask(formData: FormData) {
+async function _createTask(formData: FormData) {
   const { supabase, project, user } = await getContext();
   if (!project) return;
   const title = String(formData.get("title") ?? "").trim();
@@ -112,13 +142,13 @@ export async function createTask(formData: FormData) {
   revalidatePath("/app/tasks");
 }
 
-export async function moveTask(formData: FormData) {
+async function _moveTask(formData: FormData) {
   const { supabase } = await getContext();
   await supabase.from("tasks").update({ status: String(formData.get("status")), updated_at: new Date().toISOString() }).eq("id", String(formData.get("id")));
   revalidatePath("/app/tasks");
 }
 
-export async function deleteFile(formData: FormData) {
+async function _deleteFile(formData: FormData) {
   const { supabase } = await getContext();
   const id = String(formData.get("id"));
   const { data: f } = await supabase.from("files").select("storage_path").eq("id", id).single();
@@ -130,11 +160,15 @@ export async function deleteFile(formData: FormData) {
 }
 
 // ---------- Project: hapus / ubah nama / pengaturan ----------
-export async function deleteProject(formData: FormData) {
-  const { supabase, projects } = await getContext();
+async function _deleteProject(formData: FormData) {
+  const { supabase, projects, org } = await getContext();
   const id = String(formData.get("project_id"));
+  // bersihkan file storage milik project (DB akan cascade sendiri)
+  const { data: files } = await supabase.from("files").select("storage_path").eq("project_id", id);
+  if (files?.length) await supabase.storage.from("drive").remove(files.map((f) => f.storage_path));
   const { error } = await supabase.from("projects").delete().eq("id", id);
   if (error) throw error;
+  await logEvent("info", "action:deleteProject", `Project ${id} dihapus`, { files: files?.length ?? 0 }, org?.id);
   const c = await cookies();
   const next = projects.find((p) => p.id !== id);
   if (next) c.set("pk_project", next.id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
@@ -143,7 +177,7 @@ export async function deleteProject(formData: FormData) {
   redirect("/app");
 }
 
-export async function renameProject(formData: FormData) {
+async function _renameProject(formData: FormData) {
   const { supabase } = await getContext();
   const id = String(formData.get("project_id"));
   const name = String(formData.get("name") ?? "").trim();
@@ -152,7 +186,7 @@ export async function renameProject(formData: FormData) {
   revalidatePath("/app", "layout");
 }
 
-export async function updateProjectSettings(formData: FormData) {
+async function _updateProjectSettings(formData: FormData) {
   const { supabase, project } = await getContext();
   if (!project) return;
   const brand = { ...(project.brand ?? {}) } as Record<string, unknown>;
@@ -173,7 +207,7 @@ export async function updateProjectSettings(formData: FormData) {
   revalidatePath("/app", "layout");
 }
 
-export async function removeBrandAsset(formData: FormData) {
+async function _removeBrandAsset(formData: FormData) {
   const { supabase, project } = await getContext();
   if (!project) return;
   const path = String(formData.get("path"));
@@ -185,7 +219,7 @@ export async function removeBrandAsset(formData: FormData) {
 }
 
 // ---------- Tools per project ----------
-export async function toggleProjectTool(formData: FormData) {
+async function _toggleProjectTool(formData: FormData) {
   const { supabase, project, user } = await getContext();
   if (!project) return;
   const key = String(formData.get("tool_key"));
@@ -197,7 +231,7 @@ export async function toggleProjectTool(formData: FormData) {
 }
 
 // ---------- Pegawai di project ----------
-export async function removeAgentFromProject(formData: FormData) {
+async function _removeAgentFromProject(formData: FormData) {
   const { supabase, project } = await getContext();
   if (!project) return;
   await supabase.from("project_agents").delete().eq("project_id", project.id).eq("agent_id", String(formData.get("agent_id")));
@@ -206,7 +240,7 @@ export async function removeAgentFromProject(formData: FormData) {
 }
 
 // ---------- Kunci API organisasi ----------
-export async function saveApiKey(formData: FormData) {
+async function _saveApiKey(formData: FormData) {
   const { supabase, org, user } = await getContext();
   if (!org) return;
   const provider = String(formData.get("provider"));
@@ -221,7 +255,7 @@ export async function saveApiKey(formData: FormData) {
   redirect("/app/settings/api-keys?ok=1");
 }
 
-export async function deleteApiKey(formData: FormData) {
+async function _deleteApiKey(formData: FormData) {
   const { supabase, org } = await getContext();
   if (!org) return;
   await supabase.from("org_api_keys").delete().eq("org_id", org.id).eq("provider", String(formData.get("provider")));
@@ -229,7 +263,7 @@ export async function deleteApiKey(formData: FormData) {
 }
 
 // ---------- Skill & pengetahuan agent ----------
-export async function toggleAgentSkill(formData: FormData) {
+async function _toggleAgentSkill(formData: FormData) {
   const { supabase, org } = await getContext();
   if (!org) return;
   const agentId = String(formData.get("agent_id"));
@@ -241,13 +275,13 @@ export async function toggleAgentSkill(formData: FormData) {
   revalidatePath(`/app/agent/${slug}`);
 }
 
-export async function deleteKnowledge(formData: FormData) {
+async function _deleteKnowledge(formData: FormData) {
   const { supabase } = await getContext();
   await supabase.from("agent_knowledge").delete().eq("id", String(formData.get("id")));
   revalidatePath(`/app/agent/${String(formData.get("slug"))}`);
 }
 
-export async function addKnowledgeManual(formData: FormData) {
+async function _addKnowledgeManual(formData: FormData) {
   const { supabase, org, user } = await getContext();
   if (!org) return;
   const title = String(formData.get("title") ?? "").trim();
@@ -257,7 +291,7 @@ export async function addKnowledgeManual(formData: FormData) {
   revalidatePath(`/app/agent/${String(formData.get("slug"))}`);
 }
 
-export async function setChatModel(formData: FormData) {
+async function _setChatModel(formData: FormData) {
   const { supabase, org } = await getContext();
   if (!org) return;
   const { error } = await supabase.from("organizations").update({ chat_model: String(formData.get("model_id")) }).eq("id", org.id);
@@ -265,3 +299,37 @@ export async function setChatModel(formData: FormData) {
   revalidatePath("/app", "layout");
   redirect("/app/settings/model?ok=1");
 }
+
+// ---------- Ekspor terbungkus (dengan logging) ----------
+export const switchProject = guarded("switchProject", _switchProject);
+export const updateProjectMeta = guarded("updateProjectMeta", _updateProjectMeta);
+export const switchOrg = guarded("switchOrg", _switchOrg);
+export const createProject = guarded("createProject", _createProject);
+export const hireAgent = guarded("hireAgent", _hireAgent);
+export const toggleBookmark = guarded("toggleBookmark", _toggleBookmark);
+export const startConversation = guarded("startConversation", _startConversation);
+export const redeemVoucher = guarded("redeemVoucher", _redeemVoucher);
+export const createTask = guarded("createTask", _createTask);
+export const moveTask = guarded("moveTask", _moveTask);
+export const deleteFile = guarded("deleteFile", _deleteFile);
+export const deleteProject = guarded("deleteProject", _deleteProject);
+export const renameProject = guarded("renameProject", _renameProject);
+export const updateProjectSettings = guarded("updateProjectSettings", _updateProjectSettings);
+export const removeBrandAsset = guarded("removeBrandAsset", _removeBrandAsset);
+export const toggleProjectTool = guarded("toggleProjectTool", _toggleProjectTool);
+export const removeAgentFromProject = guarded("removeAgentFromProject", _removeAgentFromProject);
+export const saveApiKey = guarded("saveApiKey", _saveApiKey);
+export const deleteApiKey = guarded("deleteApiKey", _deleteApiKey);
+export const toggleAgentSkill = guarded("toggleAgentSkill", _toggleAgentSkill);
+export const deleteKnowledge = guarded("deleteKnowledge", _deleteKnowledge);
+export const addKnowledgeManual = guarded("addKnowledgeManual", _addKnowledgeManual);
+export const setChatModel = guarded("setChatModel", _setChatModel);
+export const openProjectSettings = guarded("openProjectSettings", _openProjectSettings);
+
+async function _clearLogs() {
+  const { supabase, org } = await getContext();
+  if (!org) return;
+  await supabase.from("app_logs").delete().eq("org_id", org.id);
+  revalidatePath("/app/settings/logs");
+}
+export const clearLogs = guarded("clearLogs", _clearLogs as (fd: FormData) => Promise<void>);

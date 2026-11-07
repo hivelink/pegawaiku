@@ -83,7 +83,7 @@ create policy "agent_knowledge anggota" on public.agent_knowledge for all
   using (public.is_org_member(org_id)) with check (public.is_org_member(org_id));
 
 -- ---------- Model chat pilihan organisasi ----------
-alter table public.organizations add column if not exists chat_model text not null default 'anthropic/claude-sonnet-4-5';
+alter table public.organizations add column if not exists chat_model text not null default 'anthropic/claude-sonnet-5-5';
 
 -- ---------- Model AI gratis / murah (chat) ----------
 insert into public.ai_models (id,provider,name,kind,pricing,price_usd,free_tier,key_provider,notes,sort) values

@@ -15,7 +15,7 @@ export default async function ModelSettingsPage({ searchParams }: { searchParams
     supabase.from("organizations").select("chat_model").eq("id", org.id).single(),
   ]);
   const keys = new Set((keyRows ?? []).map((k) => k.provider));
-  const current = orgRow?.chat_model ?? "anthropic/claude-sonnet-4-5";
+  const current = orgRow?.chat_model ?? "anthropic/claude-sonnet-5-5";
 
   return (
     <div className="space-y-5">

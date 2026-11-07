@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import { logEvent, describeError } from "@/lib/log";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -70,7 +71,9 @@ export async function POST(req: Request) {
 
     throw new Error(`Provider ${model.provider} (${model.key_provider}) belum terhubung ke Studio. Segera hadir.`);
   } catch (e) {
-    await finish({ status: "failed", error: (e as Error).message });
+    const { message, detail } = describeError(e);
+    await logEvent("error", "api:generate", message, { ...detail, model: model.id }, project.org_id);
+    await finish({ status: "failed", error: message });
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 }

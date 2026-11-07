@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logEvent, describeError } from "@/lib/log";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
   const path = `${projectId}/${kind}-${Date.now()}.${ext}`;
   const { error: upErr } = await supabase.storage.from("brand").upload(path, file, { contentType: file.type, upsert: true });
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+  if (upErr) { await logEvent("error", "api:brand-upload", upErr.message, { path }); return NextResponse.json({ error: upErr.message }, { status: 500 }); }
   const { data: pub } = supabase.storage.from("brand").getPublicUrl(path);
   const url = pub.publicUrl;
 

@@ -5,7 +5,7 @@ import { ChevronRight, Bell, Settings } from "lucide-react";
 
 const LABEL: Record<string, string> = {
   app: "home", project: "project", agent: "agent", tasks: "task", drive: "drive", billing: "billing", chat: "chat",
-  settings: "setting", agents: "agent", ai: "ai", tools: "tool", "api-keys": "kunci api", model: "model ai", landing: "landing", users: "anggota",
+  settings: "setting", agents: "agent", ai: "ai", tools: "tool", "api-keys": "kunci api", model: "model ai", logs: "log", landing: "landing", users: "anggota",
 };
 
 export function Breadcrumb({ projectName, email, agentName }: { projectName: string | null; email: string; agentName?: string }) {

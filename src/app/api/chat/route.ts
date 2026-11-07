@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logEvent, describeError } from "@/lib/log";
 import { createClient } from "@/lib/supabase/server";
 import { creditCost } from "@/lib/utils";
 import { llmStep, splitModelId, type ChatMsg } from "@/lib/llm";
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
   if (!org) return NextResponse.json({ error: "org tidak ditemukan" }, { status: 404 });
 
   const keys: Record<string, string> = Object.fromEntries((keyRows ?? []).map((k) => [k.provider, k.secret]));
-  const { keyProvider, model } = splitModelId(org.chat_model || "anthropic/claude-sonnet-4-5");
+  const { keyProvider, model } = splitModelId(org.chat_model || "anthropic/claude-sonnet-5-5");
   const apiKey = keys[keyProvider] ?? (keyProvider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined);
   if (!apiKey) return NextResponse.json({ error: `Kunci API ${keyProvider} belum diatur (Pengaturan → Kunci API), atau ganti model chat di Pengaturan → Model AI.` }, { status: 400 });
   const usesPlatformKey = keyProvider === "anthropic" && !keys.anthropic;
@@ -110,7 +111,9 @@ export async function POST(req: Request) {
         await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
         emit(`\n\u0000${JSON.stringify({ cost, inTok, outTok, model: org.chat_model })}`);
       } catch (e) {
-        emit(`\n\n[Gagal: ${(e as Error).message}]`);
+        const { message, detail } = describeError(e);
+        await logEvent("error", "api:chat", message, { ...detail, conversationId, model: org.chat_model, provider: keyProvider }, project.org_id);
+        emit(`\n\n[Gagal: ${message}]`);
       } finally {
         controller.close();
       }
