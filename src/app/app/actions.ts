@@ -128,3 +128,140 @@ export async function deleteFile(formData: FormData) {
   }
   revalidatePath("/app/drive");
 }
+
+// ---------- Project: hapus / ubah nama / pengaturan ----------
+export async function deleteProject(formData: FormData) {
+  const { supabase, projects } = await getContext();
+  const id = String(formData.get("project_id"));
+  const { error } = await supabase.from("projects").delete().eq("id", id);
+  if (error) throw error;
+  const c = await cookies();
+  const next = projects.find((p) => p.id !== id);
+  if (next) c.set("pk_project", next.id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
+  else c.delete("pk_project");
+  revalidatePath("/app", "layout");
+  redirect("/app");
+}
+
+export async function renameProject(formData: FormData) {
+  const { supabase } = await getContext();
+  const id = String(formData.get("project_id"));
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return;
+  await supabase.from("projects").update({ name }).eq("id", id);
+  revalidatePath("/app", "layout");
+}
+
+export async function updateProjectSettings(formData: FormData) {
+  const { supabase, project } = await getContext();
+  if (!project) return;
+  const brand = { ...(project.brand ?? {}) } as Record<string, unknown>;
+  const primary = String(formData.get("primary") ?? "").trim();
+  const secondary = String(formData.get("secondary") ?? "").trim();
+  if (primary) brand.primary = primary;
+  if (secondary) brand.secondary = secondary;
+  const patch: Record<string, unknown> = { brand };
+  const str = (k: string) => (formData.has(k) ? String(formData.get(k) ?? "").trim() : undefined);
+  const name = str("name"); if (name) patch.name = name;
+  for (const k of ["tagline", "description", "website", "category", "status"]) {
+    const v = str(k); if (v !== undefined) patch[k] = v || null;
+  }
+  if (formData.has("due_date")) patch.due_date = str("due_date") || null;
+  if (patch.status === null) delete patch.status;
+  const { error } = await supabase.from("projects").update(patch).eq("id", project.id);
+  if (error) throw error;
+  revalidatePath("/app", "layout");
+}
+
+export async function removeBrandAsset(formData: FormData) {
+  const { supabase, project } = await getContext();
+  if (!project) return;
+  const path = String(formData.get("path"));
+  const brand = { ...(project.brand ?? {}) } as { assets?: { name: string; path: string; url: string }[] };
+  brand.assets = (brand.assets ?? []).filter((a) => a.path !== path);
+  await supabase.storage.from("brand").remove([path]);
+  await supabase.from("projects").update({ brand }).eq("id", project.id);
+  revalidatePath("/app/project/settings");
+}
+
+// ---------- Tools per project ----------
+export async function toggleProjectTool(formData: FormData) {
+  const { supabase, project, user } = await getContext();
+  if (!project) return;
+  const key = String(formData.get("tool_key"));
+  const enable = String(formData.get("enable")) === "1";
+  if (enable) await supabase.from("project_tools").upsert({ project_id: project.id, tool_key: key, enabled_by: user.id }, { onConflict: "project_id,tool_key" });
+  else await supabase.from("project_tools").delete().eq("project_id", project.id).eq("tool_key", key);
+  revalidatePath("/app/project/tools");
+  revalidatePath("/app/project");
+}
+
+// ---------- Pegawai di project ----------
+export async function removeAgentFromProject(formData: FormData) {
+  const { supabase, project } = await getContext();
+  if (!project) return;
+  await supabase.from("project_agents").delete().eq("project_id", project.id).eq("agent_id", String(formData.get("agent_id")));
+  revalidatePath("/app/project/agents");
+  revalidatePath("/app/project");
+}
+
+// ---------- Kunci API organisasi ----------
+export async function saveApiKey(formData: FormData) {
+  const { supabase, org, user } = await getContext();
+  if (!org) return;
+  const provider = String(formData.get("provider"));
+  const secret = String(formData.get("secret") ?? "").trim();
+  if (!secret) return;
+  const { error } = await supabase.from("org_api_keys").upsert(
+    { org_id: org.id, provider, secret, label: String(formData.get("label") ?? ""), created_by: user.id },
+    { onConflict: "org_id,provider" }
+  );
+  if (error) redirect(`/app/settings/api-keys?error=${encodeURIComponent(error.message)}`);
+  revalidatePath("/app/settings/api-keys");
+  redirect("/app/settings/api-keys?ok=1");
+}
+
+export async function deleteApiKey(formData: FormData) {
+  const { supabase, org } = await getContext();
+  if (!org) return;
+  await supabase.from("org_api_keys").delete().eq("org_id", org.id).eq("provider", String(formData.get("provider")));
+  revalidatePath("/app/settings/api-keys");
+}
+
+// ---------- Skill & pengetahuan agent ----------
+export async function toggleAgentSkill(formData: FormData) {
+  const { supabase, org } = await getContext();
+  if (!org) return;
+  const agentId = String(formData.get("agent_id"));
+  const key = String(formData.get("skill_key"));
+  const slug = String(formData.get("slug"));
+  const enable = String(formData.get("enable")) === "1";
+  if (enable) await supabase.from("agent_skills").upsert({ org_id: org.id, agent_id: agentId, skill_key: key }, { onConflict: "org_id,agent_id,skill_key" });
+  else await supabase.from("agent_skills").delete().eq("org_id", org.id).eq("agent_id", agentId).eq("skill_key", key);
+  revalidatePath(`/app/agent/${slug}`);
+}
+
+export async function deleteKnowledge(formData: FormData) {
+  const { supabase } = await getContext();
+  await supabase.from("agent_knowledge").delete().eq("id", String(formData.get("id")));
+  revalidatePath(`/app/agent/${String(formData.get("slug"))}`);
+}
+
+export async function addKnowledgeManual(formData: FormData) {
+  const { supabase, org, user } = await getContext();
+  if (!org) return;
+  const title = String(formData.get("title") ?? "").trim();
+  const content = String(formData.get("content") ?? "").trim();
+  if (!title || !content) return;
+  await supabase.from("agent_knowledge").insert({ org_id: org.id, agent_id: String(formData.get("agent_id")), title, content, created_by: user.id });
+  revalidatePath(`/app/agent/${String(formData.get("slug"))}`);
+}
+
+export async function setChatModel(formData: FormData) {
+  const { supabase, org } = await getContext();
+  if (!org) return;
+  const { error } = await supabase.from("organizations").update({ chat_model: String(formData.get("model_id")) }).eq("id", org.id);
+  if (error) redirect(`/app/settings/model?error=${encodeURIComponent(error.message)}`);
+  revalidatePath("/app", "layout");
+  redirect("/app/settings/model?ok=1");
+}

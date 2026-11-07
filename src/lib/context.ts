@@ -12,8 +12,13 @@ export type Project = {
   brand: Record<string, unknown>;
   status: string | null;
   due_date: string | null;
+  tagline: string | null;
+  image_url: string | null;
+  website: string | null;
+  category: string | null;
   created_by: string | null;
   created_at: string;
+  updated_at: string;
 };
 
 /**
@@ -41,7 +46,7 @@ export const getContext = cache(async () => {
 
   const { data: projects } = await supabase
     .from("projects")
-    .select("id,org_id,name,description,brand,status,due_date,created_by,created_at")
+    .select("id,org_id,name,description,brand,status,due_date,tagline,image_url,website,category,created_by,created_at,updated_at")
     .eq("org_id", org.id)
     .order("created_at");
   const projectList = (projects ?? []) as Project[];

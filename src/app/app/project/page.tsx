@@ -1,13 +1,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import {
-  Briefcase, ListChecks, Bot, Sparkles, Clapperboard, Wrench, HardDrive, LayoutTemplate, Users as UsersIcon, Lock,
+  Briefcase, ListChecks, Bot, Sparkles, Clapperboard, Wrench, HardDrive, LayoutTemplate, Users as UsersIcon, Lock, Settings,
 } from "lucide-react";
 import { getContext } from "@/lib/context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { updateProjectMeta } from "../actions";
+import { ToolIcon } from "./tools/tool-icon";
 
 const STATUS_LABEL: Record<string, string> = { active: "Aktif", on_hold: "Ditunda", done: "Selesai", archived: "Arsip" };
 const TASK_LABEL: Record<string, string> = { todo: "Antre", in_progress: "Berjalan", review: "Review", done: "Selesai", blocked: "Terhambat" };
@@ -57,14 +58,19 @@ export default async function ProjectWorkspacePage() {
     return <Card className="p-8 text-sm text-muted">Belum ada project. Buat project baru lewat sidebar.</Card>;
   }
 
-  const [{ data: tasks }, { data: hired }, { data: convs }, { data: files }, { data: members }, { data: owner }] = await Promise.all([
+  const [{ data: tasks }, { data: hired }, { data: convs }, { data: files }, { data: members }, { data: owner }, { data: ptools }, { data: gens }] = await Promise.all([
     supabase.from("tasks").select("id,title,status,agent:agents(display_name)").eq("project_id", project.id).order("updated_at", { ascending: false }),
     supabase.from("project_agents").select("agent:agents(slug,display_name,title,avatar_url)").eq("project_id", project.id).order("hired_at", { ascending: false }),
     supabase.from("conversations").select("id,title,updated_at,agent:agents(display_name,avatar_url)").eq("project_id", project.id).order("updated_at", { ascending: false }).limit(4),
     supabase.from("files").select("id,title,kind,size_bytes,created_at").eq("project_id", project.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("org_members").select("role,user_id,profile:profiles(full_name,email,avatar_url)").eq("org_id", org.id),
     supabase.from("profiles").select("full_name,email").eq("id", project.created_by ?? org.owner_id).maybeSingle(),
+    supabase.from("project_tools").select("tool:tools(key,name,icon,category)").eq("project_id", project.id),
+    supabase.from("generations").select("id,kind,prompt,status,output_url").eq("project_id", project.id).eq("status", "done").order("created_at", { ascending: false }).limit(4),
   ]);
+  type PTool = { tool: { key: string; name: string; icon: string; category: string } };
+  const toolList = (ptools ?? []) as unknown as PTool[];
+  const brandCfg = (project.brand ?? {}) as { primary?: string; secondary?: string };
 
   type Task = { id: string; title: string; status: string; agent: { display_name: string } | null };
   type Hired = { agent: { slug: string; display_name: string; title: string; avatar_url: string } };
@@ -81,27 +87,37 @@ export default async function ProjectWorkspacePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <section className="relative overflow-hidden rounded-3xl border border-border bg-card p-8">
-        <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-gradient-to-br from-sky-200 via-blue-100 to-transparent opacity-70 blur-2xl" />
-        <div className="pointer-events-none absolute right-40 top-10 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-200 to-transparent opacity-60 blur-2xl" />
-        <div className="relative">
-          <div className="flex items-center gap-2 text-xs font-semibold text-muted"><Sparkles size={14} className="text-accent" /> Workspace AI</div>
-          <h1 className="mt-2 text-3xl font-extrabold text-primary">{project.name}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            {project.description || "Semua yang dibutuhkan tim AI Anda — pegawai, tugas, file, dan percakapan — di satu tempat."}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-            <span><span className="text-muted">Pemilik</span> <strong>{ownerName}</strong></span>
-            <span><span className="text-muted">Dibuat</span> <strong>{fmtDate(project.created_at)}</strong></span>
-            <span><span className="text-muted">Status</span> <strong>{STATUS_LABEL[project.status ?? "active"]}</strong></span>
+      {/* Header → klik membuka pengaturan project */}
+      <Link href="/app/project/settings" className="group relative block overflow-hidden rounded-3xl border border-border bg-card p-8 transition hover:shadow-md">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full opacity-60 blur-2xl" style={{ background: `linear-gradient(135deg, ${brandCfg.primary ?? "#bfdbfe"}55, ${brandCfg.secondary ?? "#e0e7ff"}33, transparent)` }} />
+        <div className="pointer-events-none absolute right-40 top-10 h-40 w-40 rounded-full bg-gradient-to-br from-indigo-200 to-transparent opacity-50 blur-2xl" />
+        <div className="relative flex items-start gap-5">
+          {project.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={project.image_url} alt="" className="h-20 w-20 shrink-0 rounded-2xl object-cover ring-2 ring-white shadow" />
+          ) : (
+            <span className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-accent text-2xl font-extrabold text-white shadow">{project.name.slice(0, 1).toUpperCase()}</span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted"><Sparkles size={14} className="text-accent" /> Workspace AI</div>
+            <h1 className="mt-1 truncate text-3xl font-extrabold text-primary">{project.name}</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted">
+              {project.tagline || project.description || "Semua yang dibutuhkan tim AI Anda — pegawai, tugas, file, dan percakapan — di satu tempat."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <span><span className="text-muted">Pemilik</span> <strong>{ownerName}</strong></span>
+              <span><span className="text-muted">Dibuat</span> <strong>{fmtDate(project.created_at)}</strong></span>
+              <span><span className="text-muted">Status</span> <strong>{STATUS_LABEL[project.status ?? "active"]}</strong></span>
+              {project.category && <span><span className="text-muted">Kategori</span> <strong>{project.category}</strong></span>}
+            </div>
           </div>
+          <span className="flex shrink-0 items-center gap-1 rounded-xl border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted opacity-70 group-hover:opacity-100"><Settings size={14} /> Pengaturan</span>
         </div>
-      </section>
+      </Link>
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {/* Project */}
-        <Panel icon={Briefcase} title="Project" subtitle="Ringkasan & detail">
+        <Panel icon={Briefcase} title="Project" subtitle="Ringkasan & detail" href="/app/project/settings">
           <div className="flex items-center justify-between text-sm"><span className="text-muted">Progres</span><strong>{progress}%</strong></div>
           <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
             <div className="h-full rounded-full bg-gradient-to-r from-primary to-accent" style={{ width: `${progress}%` }} />
@@ -146,7 +162,7 @@ export default async function ProjectWorkspacePage() {
         </Panel>
 
         {/* Agents */}
-        <Panel icon={Bot} title="Pegawai AI" subtitle="Agen yang direkrut" href="/app/agent">
+        <Panel icon={Bot} title="Pegawai AI" subtitle="Agen yang direkrut" href="/app/project/agents">
           {hiredList.length === 0 ? <Empty>Belum ada pegawai. <Link href="/app/agent" className="ml-1 font-semibold text-primary">Rekrut →</Link></Empty> : (
             <ul className="space-y-2">
               {hiredList.slice(0, 5).map(({ agent }) => (
@@ -163,8 +179,16 @@ export default async function ProjectWorkspacePage() {
         </Panel>
 
         {/* AI / percakapan */}
-        <Panel icon={Sparkles} title="AI" subtitle="Percakapan & hasil">
-          {convList.length === 0 ? <Empty>Belum ada hasil. Mulai bekerja dengan pegawai AI.</Empty> : (
+        <Panel icon={Sparkles} title="AI" subtitle="Studio & hasil generate" href="/app/project/ai">
+          {(gens ?? []).length > 0 && (
+            <div className="mb-3 grid grid-cols-4 gap-1.5">
+              {(gens ?? []).map((g) => g.kind === "image" && g.output_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={g.id} src={g.output_url} alt="" className="aspect-square w-full rounded-lg object-cover" />
+              ) : <div key={g.id} className="grid aspect-square place-items-center rounded-lg bg-slate-100 text-[10px] text-muted">{g.kind}</div>)}
+            </div>
+          )}
+          {convList.length === 0 && (gens ?? []).length === 0 ? <Empty>Belum ada hasil generate. <Link href="/app/project/ai" className="ml-1 font-semibold text-primary">Buka Studio →</Link></Empty> : (
             <ul className="space-y-2">
               {convList.map((c) => (
                 <li key={c.id}>
@@ -184,8 +208,14 @@ export default async function ProjectWorkspacePage() {
         </Panel>
 
         {/* Tools */}
-        <Panel icon={Wrench} title="Tools" subtitle="Modul yang diaktifkan">
-          <Empty>Belum ada tool yang ditambahkan.</Empty>
+        <Panel icon={Wrench} title="Tools" subtitle="Modul yang diaktifkan" href="/app/project/tools">
+          {toolList.length === 0 ? <Empty>Belum ada tool yang ditambahkan. <Link href="/app/project/tools" className="ml-1 font-semibold text-primary">Tambah →</Link></Empty> : (
+            <ul className="space-y-1.5">
+              {toolList.slice(0, 6).map(({ tool }) => (
+                <li key={tool.key} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm"><ToolIcon name={tool.icon} size={14} className="text-primary" /><span className="truncate">{tool.name}</span></li>
+              ))}
+            </ul>
+          )}
         </Panel>
 
         {/* Drive */}
@@ -203,12 +233,12 @@ export default async function ProjectWorkspacePage() {
         </Panel>
 
         {/* Landing */}
-        <Panel icon={LayoutTemplate} title="Landing" subtitle="Landing page & domain">
+        <Panel icon={LayoutTemplate} title="Landing" subtitle="Landing page & domain" href="/app/project/landing">
           <Empty>Belum ada landing page. Minta <Link href="/app/agent/vera-landing-page-builder" className="mx-1 font-semibold text-primary">Vera</Link> membuatnya.</Empty>
         </Panel>
 
         {/* Users */}
-        <Panel icon={UsersIcon} title="Anggota" subtitle="Pengguna di organisasi">
+        <Panel icon={UsersIcon} title="Anggota" subtitle="Pengguna di organisasi" href="/app/project/users">
           <ul className="space-y-2">
             {(memberList.length ? memberList : [{ role: "owner", user_id: user.id, profile: { full_name: null, email: user.email ?? null, avatar_url: null } }]).map((m) => {
               const name = m.profile?.full_name || m.profile?.email || "Anggota";

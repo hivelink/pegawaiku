@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Home, Users, HardDrive, KanbanSquare, CreditCard, LogOut, Plus, FolderOpen } from "lucide-react";
+import { Home, Users, HardDrive, KanbanSquare, CreditCard, LogOut, Plus, FolderOpen, Settings } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { getContext } from "@/lib/context";
 import { formatCredit } from "@/lib/utils";
@@ -7,6 +7,8 @@ import { signOut } from "@/app/(auth)/actions";
 import { switchProject, createProject, switchOrg } from "./actions";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ProjectList } from "./project-list";
+import { Breadcrumb } from "./breadcrumb";
 
 const NAV = [
   { href: "/app", label: "Home", icon: Home },
@@ -15,6 +17,7 @@ const NAV = [
   { href: "/app/tasks", label: "Task", icon: KanbanSquare },
   { href: "/app/drive", label: "Drive", icon: HardDrive },
   { href: "/app/billing", label: "Billing", icon: CreditCard },
+  { href: "/app/settings/model", label: "Pengaturan", icon: Settings },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -49,17 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         <div className="mt-4">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Project</div>
-          <div className="space-y-1">
-            {projects.map((p) => (
-              <form key={p.id} action={switchProject}>
-                <input type="hidden" name="project_id" value={p.id} />
-                <button className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm ${p.id === project?.id ? "bg-sky-50 font-semibold text-primary" : "hover:bg-slate-100"}`}>
-                  <FolderOpen size={14} className="shrink-0 opacity-70" /> <span className="truncate">{p.name}</span>
-                </button>
-              </form>
-            ))}
-            {projects.length === 0 && <div className="px-3 text-sm text-muted">Belum ada project.</div>}
-          </div>
+          <ProjectList projects={projects.map((p) => ({ id: p.id, name: p.name }))} activeId={project?.id ?? null} />
           <form action={createProject} className="mt-2 flex gap-1">
             <Input name="name" placeholder="Project baru" className="h-8 text-xs" required />
             <Button type="submit" size="sm" variant="outline" aria-label="Tambah project"><Plus size={14} /></Button>
@@ -84,6 +77,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {NAV.map((n) => <Link key={n.href} href={n.href}>{n.label}</Link>)}
           </nav>
         </header>
+        <Breadcrumb projectName={project?.name ?? null} email={user.email ?? ""} />
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
       </div>
     </div>
