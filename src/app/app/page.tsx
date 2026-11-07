@@ -31,7 +31,7 @@ export default async function AppHome() {
   return (
     <div className="space-y-6">
       <section className="rounded-3xl bg-gradient-to-br from-primary to-primary-2 p-8 text-white">
-        <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">Workspace: {project?.name ?? "—"}</span>
+        <Link href="/app/project" className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold hover:bg-white/25">Workspace: {project?.name ?? "—"} →</Link>
         <h1 className="mt-3 text-3xl font-extrabold">Bangun tim AI pertamamu hari ini.</h1>
         <p className="mt-2 max-w-xl text-white/80">Rekrut agen, beri brief, dan jalankan pekerjaan — semua dari satu workspace.</p>
         <Link href="/app/agent" className={buttonVariants({ variant: "accent", className: "mt-5" })}>Temukan pegawai AI →</Link>

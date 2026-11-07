@@ -10,7 +10,24 @@ export async function switchProject(formData: FormData) {
   const id = String(formData.get("project_id"));
   const c = await cookies();
   c.set("pk_project", id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
+  redirect("/app/project");
+}
+
+export async function updateProjectMeta(formData: FormData) {
+  const { supabase, project } = await getContext();
+  if (!project) return;
+  const due = String(formData.get("due_date") ?? "").trim();
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      status: String(formData.get("status") ?? project.status ?? "active"),
+      due_date: due || null,
+      description: String(formData.get("description") ?? project.description ?? ""),
+    })
+    .eq("id", project.id);
+  if (error) throw error;
+  revalidatePath("/app/project");
 }
 
 export async function switchOrg(formData: FormData) {
@@ -34,7 +51,8 @@ export async function createProject(formData: FormData) {
   if (error) throw error;
   const c = await cookies();
   c.set("pk_project", data.id, { path: "/", maxAge: 60 * 60 * 24 * 365 });
-  revalidatePath("/app");
+  revalidatePath("/app", "layout");
+  redirect("/app/project");
 }
 
 export async function hireAgent(formData: FormData) {

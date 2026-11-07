@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Home, Users, HardDrive, KanbanSquare, CreditCard, LogOut, Plus } from "lucide-react";
+import { Home, Users, HardDrive, KanbanSquare, CreditCard, LogOut, Plus, FolderOpen } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { getContext } from "@/lib/context";
 import { formatCredit } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 
 const NAV = [
   { href: "/app", label: "Home", icon: Home },
+  { href: "/app/project", label: "Project", icon: FolderOpen },
   { href: "/app/agent", label: "Agent", icon: Users },
   { href: "/app/tasks", label: "Task", icon: KanbanSquare },
   { href: "/app/drive", label: "Drive", icon: HardDrive },
@@ -52,8 +53,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {projects.map((p) => (
               <form key={p.id} action={switchProject}>
                 <input type="hidden" name="project_id" value={p.id} />
-                <button className={`w-full rounded-lg px-3 py-1.5 text-left text-sm ${p.id === project?.id ? "bg-sky-50 font-semibold text-primary" : "hover:bg-slate-100"}`}>
-                  {p.name}
+                <button className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm ${p.id === project?.id ? "bg-sky-50 font-semibold text-primary" : "hover:bg-slate-100"}`}>
+                  <FolderOpen size={14} className="shrink-0 opacity-70" /> <span className="truncate">{p.name}</span>
                 </button>
               </form>
             ))}
