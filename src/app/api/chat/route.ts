@@ -10,7 +10,7 @@ export const maxDuration = 300;
 
 const BASE_SYSTEM = `Kamu adalah pegawai AI di platform PegawaiKu. Jawab dalam Bahasa Indonesia kecuali diminta lain.
 Ikuti deskripsi peran di bawah ini secara ketat.
-Kamu punya tool. Pakai web_search/web_fetch untuk fakta terkini atau hal di luar pengetahuanmu; pakai save_to_drive untuk hasil panjang; pakai create_task bila user menyetujui rencana; pakai learn_skill untuk menyimpan keahlian baru yang kamu pelajari dari internet.
+Kamu punya tool. Jika user menyebut bahan/materi/slide/PDF/dokumen/file yang mereka berikan, PANGGIL read_drive_file (tanpa argumen = daftar file; lalu baca filenya, lanjutkan dengan part 2,3,... bila panjang) — jangan minta user mengetik ulang. Pakai web_search/web_fetch untuk fakta terkini atau hal di luar pengetahuanmu; save_to_drive untuk hasil panjang; create_task bila user menyetujui rencana; learn_skill untuk menyimpan keahlian baru; image_generate/voice_generate bila diminta gambar/suara dan kuncinya tersedia.
 Jika diminta sesuatu di luar keahlian utamamu, jangan menolak: pelajari dulu dari internet (cari, baca 2-3 sumber), simpan dengan learn_skill, lalu kerjakan. Sebutkan sumbernya.
 Jangan mengklaim membuat gambar/video; kamu menghasilkan teks dan file teks.`;
 
@@ -71,8 +71,11 @@ export async function POST(req: Request) {
 
   // Tool yang aktif: semua tool bawaan + yang diminta agent/skill; tool proyek (project_tools) sebagai whitelist tambahan
   const enabledKeys = new Set([
-    "web_search", "web_fetch", "save_to_drive", "read_drive_file", "create_task", "learn_skill",
+    "web_search", "web_fetch", "save_to_drive", "read_drive_file", "create_task", "learn_skill", "keyword_research",
     ...(ptools ?? []).map((t) => t.tool_key),
+    ...(keys.google ? ["image_generate"] : []),
+    ...(keys.elevenlabs ? ["voice_generate"] : []),
+    ...(agent.requires_tools ?? []),
   ]);
   const tools = Object.values(TOOL_DEFS).filter((t) => enabledKeys.has(t.name));
 
@@ -93,7 +96,7 @@ export async function POST(req: Request) {
           messages.push({ role: "assistant_tool_calls", calls: res.toolCalls, text: res.text });
           const results: { id: string; name: string; output: string }[] = [];
           for (const call of res.toolCalls) {
-            const label = call.name === "web_search" ? `🔎 Mencari: ${call.input.query}` : call.name === "web_fetch" ? `📄 Membaca: ${call.input.url}` : call.name === "save_to_drive" ? `💾 Menyimpan: ${call.input.filename}` : call.name === "create_task" ? `✅ Membuat tugas: ${call.input.title}` : call.name === "learn_skill" ? `🧠 Mempelajari: ${call.input.title}` : `🛠 ${call.name}`;
+            const label = call.name === "web_search" ? `🔎 Mencari: ${call.input.query}` : call.name === "web_fetch" ? `📄 Membaca: ${call.input.url}` : call.name === "read_drive_file" ? `📂 Membaca bahan: ${call.input.name ?? "daftar file"}${call.input.part && Number(call.input.part) > 1 ? ` (bagian ${call.input.part})` : ""}` : call.name === "keyword_research" ? `🔑 Riset keyword: ${call.input.keyword}` : call.name === "image_generate" ? `🖼 Membuat gambar` : call.name === "voice_generate" ? `🔊 Membuat suara` : call.name === "landing_publish" ? `🚀 Menerbitkan: /p/${call.input.slug}` : /^(ipr_vogel|esp_quick|srp_quick|oilfield_convert)$/.test(call.name) ? `🧮 Menghitung (${call.name})` : /^(subnet_calc|dns_lookup|http_check)$/.test(call.name) ? `🌐 Cek jaringan (${call.name})` : call.name === "mikrotik_rest" ? `📡 MikroTik ${call.input.method ?? "GET"} ${call.input.path}` : call.name === "save_to_drive" ? `💾 Menyimpan: ${call.input.filename}` : call.name === "create_task" ? `✅ Membuat tugas: ${call.input.title}` : call.name === "learn_skill" ? `🧠 Mempelajari: ${call.input.title}` : `🛠 ${call.name}`;
             const line = `\n\n> _${label}_\n\n`;
             full += line; emit(line);
             const output = await runTool(call.name, call.input, ctx);

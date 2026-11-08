@@ -11,7 +11,7 @@ HAIR = ["#1F1B18", "#2C2420", "#3B2A1E", "#4E3425", "#5C4033", "#111111"]
 BG = {
     "marketing": ("#DBEAFE", "#2563EB"), "graphic-designer": ("#EDE9FE", "#7C3AED"), "video-editor": ("#FCE7F3", "#DB2777"),
     "sales": ("#FEF3C7", "#D97706"), "hr": ("#D1FAE5", "#059669"), "finance": ("#E0F2FE", "#0284C7"),
-    "management": ("#E2E8F0", "#334155"), "builder": ("#CCFBF1", "#0D9488"),
+    "management": ("#E2E8F0", "#334155"), "builder": ("#CCFBF1", "#0D9488"), "engineering": ("#FEF9C3", "#B45309"),
 }
 FEMALE = {"dewi", "dian", "fani", "hani", "kira", "luna", "maya", "meda", "sari", "vera", "vika", "zara"}
 

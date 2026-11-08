@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ToolDef } from "./llm";
+import { extractText } from "./extract";
+import { DOMAIN_TOOL_DEFS, runDomainTool } from "./domain-tools";
 
 /**
  * Tool yang bisa dipanggil pegawai AI saat bekerja.
@@ -17,6 +19,7 @@ export type ToolCtx = {
 };
 
 export const TOOL_DEFS: Record<string, ToolDef> = {
+  ...DOMAIN_TOOL_DEFS,
   web_search: {
     name: "web_search",
     description: "Cari informasi terkini di internet. Kembalikan daftar hasil (judul, url, cuplikan). Gunakan kueri spesifik, boleh bahasa Indonesia atau Inggris.",
@@ -34,8 +37,28 @@ export const TOOL_DEFS: Record<string, ToolDef> = {
   },
   read_drive_file: {
     name: "read_drive_file",
-    description: "Baca isi file teks (md/txt/csv/html/json) dari Drive project berdasarkan nama atau id. Tanpa argumen: daftar file.",
-    input_schema: { type: "object", properties: { name: { type: "string", description: "Nama file (sebagian boleh) atau kosong untuk daftar" } } },
+    description: "Baca isi dokumen dari Drive project: PDF, Word (docx), PowerPoint (pptx, per slide + catatan), Excel/CSV, teks/markdown/html. Tanpa argumen: daftar file. Dokumen panjang dibagi per bagian 12.000 karakter — gunakan `part` untuk melanjutkan.",
+    input_schema: { type: "object", properties: { name: { type: "string", description: "Nama file (sebagian boleh) atau kosong untuk daftar" }, part: { type: "integer", description: "Bagian ke-n (mulai 1) untuk dokumen panjang", default: 1 } } },
+  },
+  keyword_research: {
+    name: "keyword_research",
+    description: "Ide keyword terkait dari saran pencarian Google (gratis) dan, jika kunci SerpApi tersedia, hasil SERP teratas + pertanyaan terkait. Untuk SEO/iklan.",
+    input_schema: { type: "object", properties: { keyword: { type: "string" }, country: { type: "string", description: "Kode negara, default id" } }, required: ["keyword"] },
+  },
+  voice_generate: {
+    name: "voice_generate",
+    description: "Ubah teks menjadi suara (voice-over) memakai ElevenLabs (butuh kunci elevenlabs). Hasil mp3 disimpan ke Drive.",
+    input_schema: { type: "object", properties: { text: { type: "string" }, voice: { type: "string", description: "ID suara ElevenLabs; kosong = suara default multibahasa" }, filename: { type: "string" } }, required: ["text"] },
+  },
+  image_generate: {
+    name: "image_generate",
+    description: "Buat gambar dari prompt (Gemini Nano Banana; butuh kunci google) dan simpan ke Drive. Prompt bahasa Inggris, deskriptif.",
+    input_schema: { type: "object", properties: { prompt: { type: "string" }, filename: { type: "string" } }, required: ["prompt"] },
+  },
+  landing_publish: {
+    name: "landing_publish",
+    description: "Publikasikan file landing page (.html di Drive) ke URL publik /p/<slug>. Hanya setelah user menyetujui pratinjau.",
+    input_schema: { type: "object", properties: { filename: { type: "string", description: "Nama file .html di Drive" }, slug: { type: "string", description: "slug URL, huruf kecil-angka-tanda hubung" } }, required: ["filename", "slug"] },
   },
   create_task: {
     name: "create_task",
@@ -57,10 +80,17 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       case "web_search": return await webSearch(String(input.query ?? ""), Number(input.max_results ?? 5), ctx);
       case "web_fetch": return await webFetch(String(input.url ?? ""), ctx);
       case "save_to_drive": return await saveToDrive(String(input.filename ?? "hasil.md"), String(input.content ?? ""), ctx);
-      case "read_drive_file": return await readDriveFile(input.name ? String(input.name) : "", ctx);
+      case "read_drive_file": return await readDriveFile(input.name ? String(input.name) : "", Number(input.part ?? 1), ctx);
+      case "keyword_research": return await keywordResearch(String(input.keyword ?? ""), String(input.country ?? "id"), ctx);
+      case "voice_generate": return await voiceGenerate(input, ctx);
+      case "image_generate": return await imageGenerate(input, ctx);
+      case "landing_publish": return await landingPublish(String(input.filename ?? ""), String(input.slug ?? ""), ctx);
       case "create_task": return await createTask(input, ctx);
       case "learn_skill": return await learnSkill(input, ctx);
-      default: return `Tool ${name} tidak dikenal.`;
+      default: {
+        const r = await runDomainTool(name, input, ctx.keys);
+        return r ?? `Tool ${name} tidak dikenal.`;
+      }
     }
   } catch (e) {
     return `Gagal menjalankan ${name}: ${(e as Error).message}`;
@@ -110,16 +140,123 @@ async function saveToDrive(filename: string, content: string, ctx: ToolCtx): Pro
   return `Tersimpan di Drive project sebagai "${safe}" (${bytes.length} byte).`;
 }
 
-async function readDriveFile(name: string, ctx: ToolCtx): Promise<string> {
-  const { data: files } = await ctx.supabase.from("files").select("id,title,storage_path,mime_type,size_bytes").eq("project_id", ctx.projectId).order("created_at", { ascending: false }).limit(50);
-  if (!files?.length) return "Drive project kosong.";
-  if (!name) return `File di Drive:\n${files.map((f) => `- ${f.title} (${f.mime_type ?? "?"}, ${f.size_bytes ?? 0} byte)`).join("\n")}`;
-  const f = files.find((x) => x.title.toLowerCase().includes(name.toLowerCase()) || x.id === name);
+async function readDriveFile(name: string, part: number, ctx: ToolCtx): Promise<string> {
+  const { data: files } = await ctx.supabase.from("files").select("id,title,storage_path,mime_type,size_bytes").eq("project_id", ctx.projectId).order("created_at", { ascending: false }).limit(100);
+  if (!files?.length) return "Drive project kosong. Minta user mengunggah bahan lewat menu Drive atau tombol lampiran di chat.";
+  if (!name) return `File di Drive project:\n${files.map((f) => `- ${f.title} (${f.mime_type ?? "?"}, ${Math.round((f.size_bytes ?? 0) / 1024)} KB)`).join("\n")}`;
+  const q = name.toLowerCase();
+  const f = files.find((x) => x.title.toLowerCase() === q) ?? files.find((x) => x.title.toLowerCase().includes(q)) ?? files.find((x) => x.id === name);
   if (!f) return `File "${name}" tidak ditemukan. Tersedia: ${files.map((x) => x.title).join(", ")}`;
-  if (f.mime_type && !/^(text\/|application\/json)/.test(f.mime_type)) return `File "${f.title}" bukan teks (${f.mime_type}); tidak bisa dibaca di sini.`;
   const { data, error } = await ctx.supabase.storage.from("drive").download(f.storage_path);
   if (error || !data) throw new Error(error?.message ?? "gagal unduh");
-  return clip(await data.text(), 12000);
+  const buf = Buffer.from(await data.arrayBuffer());
+  const ex = await extractText(buf, f.mime_type ?? "", f.title);
+  if (!ex.text) return ex.note ?? `File "${f.title}" tidak berisi teks yang bisa dibaca.`;
+  const SIZE = 12000;
+  const total = Math.max(1, Math.ceil(ex.text.length / SIZE));
+  const p = Math.min(Math.max(1, part || 1), total);
+  const chunk = ex.text.slice((p - 1) * SIZE, p * SIZE);
+  const head = `[${f.title}${ex.pages ? ` · ${ex.pages} halaman/slide` : ""} · bagian ${p}/${total}${ex.note ? ` · ${ex.note}` : ""}]`;
+  return `${head}\n\n${chunk}${p < total ? `\n\n…[lanjutan ada di part ${p + 1}]` : ""}`;
+}
+
+async function keywordResearch(keyword: string, country: string, ctx: ToolCtx): Promise<string> {
+  if (!keyword) return "Keyword kosong.";
+  const out: string[] = [];
+  // Gratis: Google Suggest (autocomplete)
+  try {
+    const r = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox&hl=${country}&gl=${country}&q=${encodeURIComponent(keyword)}`);
+    const j = (await r.json()) as [string, string[]];
+    const sug = (j?.[1] ?? []).slice(0, 10);
+    if (sug.length) out.push(`Saran pencarian Google untuk "${keyword}":\n${sug.map((x) => `- ${x}`).join("\n")}`);
+    // variasi huruf awal untuk memperluas
+    const extra: string[] = [];
+    for (const suf of ["cara", "harga", "terbaik", "untuk"]) {
+      const r2 = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox&hl=${country}&gl=${country}&q=${encodeURIComponent(keyword + " " + suf)}`);
+      const j2 = (await r2.json()) as [string, string[]];
+      extra.push(...(j2?.[1] ?? []).slice(0, 4));
+    }
+    if (extra.length) out.push(`Variasi long-tail:\n${Array.from(new Set(extra)).map((x) => `- ${x}`).join("\n")}`);
+  } catch (e) { out.push(`Google Suggest tidak bisa diakses: ${(e as Error).message}`); }
+  // Berbayar/free-tier: SerpApi untuk SERP + People Also Ask + related
+  if (ctx.keys.serp) {
+    try {
+      const r = await fetch(`https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(keyword)}&hl=${country}&gl=${country}&api_key=${ctx.keys.serp}`);
+      const j = await r.json();
+      const org = (j.organic_results ?? []).slice(0, 8).map((x: { position: number; title: string; link: string }) => `${x.position}. ${x.title} — ${x.link}`);
+      const paa = (j.related_questions ?? []).slice(0, 8).map((x: { question: string }) => `- ${x.question}`);
+      const rel = (j.related_searches ?? []).slice(0, 8).map((x: { query: string }) => `- ${x.query}`);
+      if (org.length) out.push(`SERP teratas (siapa yang ranking):\n${org.join("\n")}`);
+      if (paa.length) out.push(`Pertanyaan terkait (People Also Ask):\n${paa.join("\n")}`);
+      if (rel.length) out.push(`Pencarian terkait:\n${rel.join("\n")}`);
+    } catch (e) { out.push(`SerpApi gagal: ${(e as Error).message}`); }
+  } else {
+    out.push("Catatan: volume pencarian & SERP tidak tersedia tanpa kunci SerpApi (Pengaturan → Kunci API). Beri perkiraan relatif (tinggi/sedang/rendah).");
+  }
+  return out.join("\n\n");
+}
+
+async function putToDrive(ctx: ToolCtx, filename: string, bytes: Buffer, mime: string, kind: string): Promise<string> {
+  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${ctx.projectId}/${Date.now()}-${safe}`;
+  const { error: upErr } = await ctx.supabase.storage.from("drive").upload(path, bytes, { contentType: mime });
+  if (upErr) throw new Error(upErr.message);
+  const { error } = await ctx.supabase.from("files").insert({ project_id: ctx.projectId, owner_id: ctx.userId, title: safe, storage_path: path, mime_type: mime, size_bytes: bytes.length, kind });
+  if (error) throw new Error(error.message);
+  return safe;
+}
+
+async function voiceGenerate(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
+  const text = String(input.text ?? "").trim();
+  if (!text) return "Teks kosong.";
+  if (!ctx.keys.elevenlabs) return "Kunci ElevenLabs belum diatur (Pengaturan → Kunci API). Gratis 10.000 karakter/bulan.";
+  if (text.length > 4000) return "Teks terlalu panjang (maks 4.000 karakter per panggilan). Pecah per bagian.";
+  const voice = String(input.voice || "JBFqnCBsd6RMkjVDRZzb"); // suara default multibahasa
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`, {
+    method: "POST", headers: { "xi-api-key": ctx.keys.elevenlabs, "content-type": "application/json" },
+    body: JSON.stringify({ text, model_id: "eleven_multilingual_v2" }),
+  });
+  if (!r.ok) throw new Error(`ElevenLabs HTTP ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const bytes = Buffer.from(await r.arrayBuffer());
+  const name = await putToDrive(ctx, String(input.filename || `voice-${Date.now()}.mp3`).replace(/\.(?!mp3$)[a-z0-9]+$/i, "") + (String(input.filename || "").endsWith(".mp3") ? "" : ".mp3"), bytes, "audio/mpeg", "file");
+  return `Suara dibuat (${Math.round(bytes.length / 1024)} KB) dan disimpan di Drive sebagai "${name}".`;
+}
+
+async function imageGenerate(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
+  const prompt = String(input.prompt ?? "").trim();
+  if (!prompt) return "Prompt kosong.";
+  if (!ctx.keys.google) return "Kunci Google AI Studio belum diatur (Pengaturan → Kunci API, gratis). Berikan prompt gambarnya ke user agar dibuat di Studio AI.";
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${ctx.keys.google}`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["IMAGE", "TEXT"] } }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error?.message ?? `Gemini HTTP ${r.status}`);
+  const partImg = (j.candidates?.[0]?.content?.parts ?? []).find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData);
+  if (!partImg) return "Model tidak mengembalikan gambar (mungkin prompt ditolak kebijakan). Coba ubah prompt.";
+  const bytes = Buffer.from(partImg.inlineData.data, "base64");
+  const ext = partImg.inlineData.mimeType.includes("jpeg") ? "jpg" : "png";
+  const name = await putToDrive(ctx, String(input.filename || `gambar-${Date.now()}.${ext}`), bytes, partImg.inlineData.mimeType, "image");
+  await ctx.supabase.from("generations").insert({ project_id: ctx.projectId, user_id: ctx.userId, model_id: "google/gemini-2.5-flash-image", kind: "image", prompt, status: "done", output_url: null, cost: 0.039 }).then(() => {}, () => {});
+  return `Gambar dibuat dan disimpan di Drive sebagai "${name}". User bisa melihatnya di menu Drive.`;
+}
+
+async function landingPublish(filename: string, slug: string, ctx: ToolCtx): Promise<string> {
+  if (!filename || !slug) return "Butuh nama file .html dan slug.";
+  const clean = slug.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  if (clean.length < 3) return "Slug terlalu pendek.";
+  const { data: f } = await ctx.supabase.from("files").select("id,title,storage_path").eq("project_id", ctx.projectId).ilike("title", `%${filename}%`).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!f) return `File "${filename}" tidak ditemukan di Drive.`;
+  const { data: dl, error } = await ctx.supabase.storage.from("drive").download(f.storage_path);
+  if (error || !dl) throw new Error(error?.message ?? "gagal unduh");
+  const html = Buffer.from(await dl.arrayBuffer());
+  const path = `${ctx.projectId}/landing/${clean}.html`;
+  const { error: upErr } = await ctx.supabase.storage.from("brand").upload(path, html, { contentType: "text/html; charset=utf-8", upsert: true });
+  if (upErr) throw new Error(upErr.message);
+  const { error: lpErr } = await ctx.supabase.from("landing_pages").upsert({ project_id: ctx.projectId, slug: clean, storage_path: path, source_file_id: f.id, published_by: ctx.userId, published_at: new Date().toISOString() }, { onConflict: "slug" });
+  if (lpErr) throw new Error(lpErr.message.includes("duplicate") ? `Slug "${clean}" sudah dipakai project lain.` : lpErr.message);
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  return `Landing page terbit di ${base}/p/${clean}`;
 }
 
 async function createTask(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {

@@ -5,7 +5,7 @@ import { toggleProjectTool } from "../../actions";
 import { ToolIcon } from "./tool-icon";
 
 export type Tool = { key: string; name: string; description: string; category: string; icon: string; requires_key: string | null; is_available: boolean };
-const CAT: Record<string, string> = { internal: "Bawaan", riset: "Riset", media: "Media", publikasi: "Publikasi", integrasi: "Integrasi" };
+const CAT: Record<string, string> = { internal: "Bawaan", riset: "Riset", media: "Media", publikasi: "Publikasi", integrasi: "Integrasi", jaringan: "Jaringan", perminyakan: "Perminyakan" };
 
 export function AddToolButton({ tools, enabled, keys }: { tools: Tool[]; enabled: string[]; keys: string[] }) {
   const [open, setOpen] = useState(false);

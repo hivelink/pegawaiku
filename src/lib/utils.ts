@@ -15,6 +15,7 @@ export const CATEGORIES: { key: string; label: string; emoji: string }[] = [
   { key: "finance", label: "Finance", emoji: "📊" },
   { key: "management", label: "Management", emoji: "🗂️" },
   { key: "builder", label: "Builder", emoji: "🛠️" },
+  { key: "engineering", label: "Engineering", emoji: "⚙️" },
 ];
 
 export function categoryLabel(key: string) {

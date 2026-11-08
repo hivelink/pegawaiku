@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "count": 28,
+  "count": 30,
   "agents": [
     {
       "name": "aldi-market-research-strategist",
@@ -372,6 +372,44 @@
       "version": "1.0.0",
       "path": "skills/zara-ad-script-specialist/SKILL.md",
       "body_lines": 119
+    },
+    {
+      "name": "bayu-production-engineer",
+      "display_name": "Bayu",
+      "title": "Production Engineer (Artificial Lift)",
+      "category": "engineering",
+      "description": "Dipakai saat user butuh analisis produksi sumur minyak dan artificial lift: kurva IPR (Vogel/komposit), perkiraan desain ESP (TDH, stage, daya motor), analisis sucker rod pump (beban rod, counterbalance, torsi, efisiensi volumetrik), konversi satuan oilfield, diagnosis masalah operasi (gas lock, pump-off, fluid pound, kavitasi), dan menyusun bahan ajar/laporan teknik dari dokumen user. Trigger: \"hitung IPR sumur ini\", \"desain awal ESP\", \"berapa stage yang dibutuhkan\", \"analisis dynamometer/beban rod\", \"kenapa ESP sering trip\", \"konversi psi ke bar\", \"buat modul kuliah pompa ESP\".",
+      "language": "id",
+      "requires_tools": [
+        "ipr_vogel",
+        "esp_quick",
+        "srp_quick",
+        "oilfield_convert",
+        "read_drive_file",
+        "web_search"
+      ],
+      "version": "1.0.0",
+      "path": "skills/bayu-production-engineer/SKILL.md",
+      "body_lines": 90
+    },
+    {
+      "name": "satria-network-engineer",
+      "display_name": "Satria",
+      "title": "Network Engineer (MikroTik & LAN)",
+      "category": "engineering",
+      "description": "Dipakai saat user butuh bantuan jaringan: desain subnet/VLAN, konfigurasi MikroTik RouterOS (firewall, NAT, DHCP, hotspot/voucher, queue/bandwidth, VPN WireGuard, bridge VLAN), troubleshooting koneksi (ping/DNS/HTTP, routing, DNS), pembacaan konfigurasi router langsung via REST API, dan dokumentasi topologi. Trigger: \"bagi subnet untuk 4 VLAN\", \"buat script firewall MikroTik\", \"setup hotspot voucher\", \"kenapa internet putus-putus\", \"cek konfigurasi router saya\", \"limit bandwidth per user\", \"setup WireGuard\".",
+      "language": "id",
+      "requires_tools": [
+        "subnet_calc",
+        "dns_lookup",
+        "http_check",
+        "mikrotik_rest",
+        "read_drive_file",
+        "web_search"
+      ],
+      "version": "1.0.0",
+      "path": "skills/satria-network-engineer/SKILL.md",
+      "body_lines": 91
     }
   ]
 }

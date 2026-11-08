@@ -23,6 +23,8 @@ const PROVIDERS: { key: string; name: string; hint: string; url: string; free?: 
   { key: "openai", name: "OpenAI (GPT, GPT Image, TTS)", hint: "sk-…", url: "https://platform.openai.com/api-keys", group: "berbayar" },
   { key: "fal", name: "fal.ai (Seedream, Seedance, Flux, Kling, Wan)", hint: "key_id:secret", url: "https://fal.ai/dashboard/keys", free: "Kredit uji coba kecil", group: "berbayar" },
   { key: "meta", name: "Meta (Ads Library / Marketing API)", hint: "token akses", url: "https://developers.facebook.com/tools/explorer/", group: "berbayar" },
+  { key: "mikrotik", name: "MikroTik RouterOS (REST API v7)", hint: "https://host:port|user|password", url: "https://help.mikrotik.com/docs/display/ROS/REST+API", free: "Router sendiri — aktifkan www-ssl & buat user read-only", group: "gratis" },
+  { key: "composio", name: "Composio (1.700+ aplikasi: Gmail, Slack, Notion, Sheets…)", hint: "ak_…", url: "https://app.composio.dev/settings", free: "Tier gratis tersedia — integrasi menyusul", group: "gratis" },
 ];
 
 export default async function ApiKeysPage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {

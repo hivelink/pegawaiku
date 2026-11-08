@@ -9,7 +9,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
   const { supabase } = await getContext();
   const { data: conv } = await supabase
     .from("conversations")
-    .select("id,title,agent:agents(slug,display_name,title,avatar_url)")
+    .select("id,title,project_id,agent:agents(slug,display_name,title,avatar_url)")
     .eq("id", id)
     .single();
   if (!conv) notFound();
@@ -25,7 +25,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
           <div className="text-xs text-muted">{conv.title}</div>
         </div>
       </div>
-      <ChatPanel conversationId={id} agentName={agent.display_name} initial={(messages ?? []).filter((m) => m.role !== "system") as { id: string; role: "user" | "assistant"; content: string }[]} />
+      <ChatPanel conversationId={id} projectId={conv.project_id} agentName={agent.display_name} initial={(messages ?? []).filter((m) => m.role !== "system") as { id: string; role: "user" | "assistant"; content: string }[]} />
     </div>
   );
 }
