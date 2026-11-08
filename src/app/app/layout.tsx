@@ -21,7 +21,9 @@ const NAV = [
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, org, orgs, project, projects } = await getContext();
+  const { supabase, user, org, orgs, project, projects } = await getContext();
+  // jumlah permintaan kemampuan menunggu (tabel bisa belum ada → 0)
+  const { count: pendingCaps } = org ? await supabase.from("capability_requests").select("id", { count: "exact", head: true }).eq("org_id", org.id).eq("status", "pending") : { count: 0 };
 
   return (
     <div className="flex min-h-screen">
@@ -77,7 +79,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {NAV.map((n) => <Link key={n.href} href={n.href}>{n.label}</Link>)}
           </nav>
         </header>
-        <Breadcrumb projectName={project?.name ?? null} email={user.email ?? ""} />
+        <Breadcrumb projectName={project?.name ?? null} email={user.email ?? ""} pendingCaps={pendingCaps ?? 0} />
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
       </div>
     </div>

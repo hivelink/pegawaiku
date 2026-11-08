@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  outputFileTracingIncludes: { "/api/admin/bootstrap-sql": ["./supabase/migrations/**"] },
   images: { remotePatterns: [{ protocol: "https", hostname: "**" }] },
 };
 

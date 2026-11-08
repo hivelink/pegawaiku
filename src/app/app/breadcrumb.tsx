@@ -5,10 +5,10 @@ import { ChevronRight, Bell, Settings } from "lucide-react";
 
 const LABEL: Record<string, string> = {
   app: "home", project: "project", agent: "agent", tasks: "task", drive: "drive", billing: "billing", chat: "chat",
-  settings: "setting", agents: "agent", ai: "ai", tools: "tool", "api-keys": "kunci api", model: "model ai", logs: "log", landing: "landing", users: "anggota",
+  settings: "setting", agents: "agent", ai: "ai", tools: "tool", "api-keys": "kunci api", model: "model ai", logs: "log", capabilities: "kemampuan", update: "pembaruan", landing: "landing", users: "anggota",
 };
 
-export function Breadcrumb({ projectName, email, agentName }: { projectName: string | null; email: string; agentName?: string }) {
+export function Breadcrumb({ projectName, email, agentName, pendingCaps = 0 }: { projectName: string | null; email: string; agentName?: string; pendingCaps?: number }) {
   const path = usePathname();
   const segs = path.split("/").filter(Boolean); // ["app","project","settings"]
   const crumbs: { label: string; href: string }[] = [{ label: "home", href: "/app" }];
@@ -48,7 +48,10 @@ export function Breadcrumb({ projectName, email, agentName }: { projectName: str
       </nav>
       <div className="flex items-center gap-2">
         <Link href="/app/settings/model" aria-label="Pengaturan" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Settings size={18} /></Link>
-        <button type="button" aria-label="Notifikasi" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Bell size={18} /></button>
+        <Link href="/app/settings/capabilities" aria-label="Notifikasi" title={pendingCaps ? `${pendingCaps} permintaan kemampuan menunggu persetujuan` : "Tidak ada notifikasi"} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+          <Bell size={18} />
+          {pendingCaps > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">{pendingCaps > 9 ? "9+" : pendingCaps}</span>}
+        </Link>
         <span title={email} className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-primary to-accent text-xs font-bold text-white">{initial}</span>
       </div>
     </div>

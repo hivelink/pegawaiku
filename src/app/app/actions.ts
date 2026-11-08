@@ -333,3 +333,69 @@ async function _clearLogs() {
   revalidatePath("/app/settings/logs");
 }
 export const clearLogs = guarded("clearLogs", _clearLogs as (fd: FormData) => Promise<void>);
+
+// ---------- Kemampuan agent (disetujui admin organisasi) ----------
+async function requireOrgAdmin() {
+  const ctx = await getContext();
+  if (!ctx.org) throw new Error("Organisasi tidak ditemukan");
+  const { data: m } = await ctx.supabase.from("org_members").select("role").eq("org_id", ctx.org.id).eq("user_id", ctx.user.id).maybeSingle();
+  if (!m || !["owner", "admin"].includes(m.role)) throw new Error("Hanya owner/admin organisasi yang bisa menyetujui kemampuan");
+  return ctx as typeof ctx & { org: NonNullable<typeof ctx.org> };
+}
+
+async function _reviewCapabilityRequest(formData: FormData) {
+  const { supabase, org, user } = await requireOrgAdmin();
+  const id = String(formData.get("id"));
+  const decision = String(formData.get("decision")); // approve | reject | done
+  const note = String(formData.get("note") ?? "").trim() || null;
+  const { data: req, error: rErr } = await supabase.from("capability_requests").select("*").eq("id", id).eq("org_id", org.id).single();
+  if (rErr || !req) throw new Error(rErr?.message ?? "Permintaan tidak ditemukan");
+  let status = decision === "reject" ? "rejected" : decision === "done" ? "done" : "approved";
+  if (decision === "approve") {
+    if (req.kind === "builtin" && req.capability_key) {
+      const { error } = await supabase.from("org_capabilities").upsert({ org_id: org.id, capability_key: req.capability_key, approved_by: user.id }, { onConflict: "org_id,capability_key" });
+      if (error) throw new Error(error.message);
+    } else if (req.kind === "http" && req.spec) {
+      const { validateHttpSpec } = await import("@/lib/capabilities");
+      const err = validateHttpSpec(req.spec);
+      if (err) throw new Error(`Spesifikasi HTTP tidak aman: ${err}`);
+      const slug = String(req.title).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "aksi";
+      const key = `http_${slug}_${id.slice(0, 6)}`;
+      const { error } = await supabase.from("capabilities").upsert({ key, name: req.title, description: req.reason, kind: "http", risk: "medium", org_id: org.id, spec: req.spec }, { onConflict: "key" });
+      if (error) throw new Error(error.message);
+      const { error: e2 } = await supabase.from("org_capabilities").upsert({ org_id: org.id, capability_key: key, approved_by: user.id }, { onConflict: "org_id,capability_key" });
+      if (e2) throw new Error(e2.message);
+    } else {
+      status = "needs_dev";
+    }
+  }
+  const { error } = await supabase.from("capability_requests").update({ status, review_note: note, reviewed_by: user.id, reviewed_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(error.message);
+  if (req.conversation_id && (status === "approved" || status === "rejected")) {
+    await supabase.from("messages").insert({ conversation_id: req.conversation_id, role: "assistant", content: status === "approved" ? `✅ Admin menyetujui kemampuan **${req.title}**. Silakan ulangi permintaanmu — sekarang saya bisa mengerjakannya.` : `❌ Admin menolak kemampuan **${req.title}**${note ? `: ${note}` : "."}` });
+  }
+  revalidatePath("/app/settings/capabilities");
+  revalidatePath("/app", "layout");
+}
+
+async function _toggleCapability(formData: FormData) {
+  const { supabase, org, user } = await requireOrgAdmin();
+  const key = String(formData.get("key"));
+  if (String(formData.get("enable")) === "1") {
+    const { error } = await supabase.from("org_capabilities").upsert({ org_id: org.id, capability_key: key, approved_by: user.id }, { onConflict: "org_id,capability_key" });
+    if (error) throw new Error(error.message);
+  } else {
+    await supabase.from("org_capabilities").delete().eq("org_id", org.id).eq("capability_key", key);
+  }
+  revalidatePath("/app/settings/capabilities");
+}
+
+async function _deleteHttpCapability(formData: FormData) {
+  const { supabase, org } = await requireOrgAdmin();
+  await supabase.from("capabilities").delete().eq("org_id", org.id).eq("key", String(formData.get("key")));
+  revalidatePath("/app/settings/capabilities");
+}
+
+export const reviewCapabilityRequest = guarded("reviewCapabilityRequest", _reviewCapabilityRequest);
+export const toggleCapability = guarded("toggleCapability", _toggleCapability);
+export const deleteHttpCapability = guarded("deleteHttpCapability", _deleteHttpCapability);

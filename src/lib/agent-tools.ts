@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ToolDef } from "./llm";
 import { extractText } from "./extract";
 import { DOMAIN_TOOL_DEFS, runDomainTool } from "./domain-tools";
+import { BUILTIN_CAP_DEFS, REQUEST_CAPABILITY_DEF, runBuiltinCap, runHttpCap, validateHttpSpec, type HttpSpec } from "./capabilities";
 
 /**
  * Tool yang bisa dipanggil pegawai AI saat bekerja.
@@ -16,10 +17,14 @@ export type ToolCtx = {
   userId: string;
   conversationId: string;
   keys: Record<string, string>; // provider -> secret
+  httpCaps?: Record<string, HttpSpec>; // kemampuan HTTP yang disetujui admin
+  enabledCaps?: Set<string>;           // kemampuan builtin yang aktif untuk org
 };
 
 export const TOOL_DEFS: Record<string, ToolDef> = {
   ...DOMAIN_TOOL_DEFS,
+  ...BUILTIN_CAP_DEFS,
+  request_capability: REQUEST_CAPABILITY_DEF,
   web_search: {
     name: "web_search",
     description: "Cari informasi terkini di internet. Kembalikan daftar hasil (judul, url, cuplikan). Gunakan kueri spesifik, boleh bahasa Indonesia atau Inggris.",
@@ -32,8 +37,8 @@ export const TOOL_DEFS: Record<string, ToolDef> = {
   },
   save_to_drive: {
     name: "save_to_drive",
-    description: "Simpan teks (markdown/txt/html/csv) sebagai file ke Drive project. Gunakan untuk hasil kerja panjang: ebook, skrip, laporan, landing page.",
-    input_schema: { type: "object", properties: { filename: { type: "string", description: "Nama file dengan ekstensi, mis. outline-ebook.md" }, content: { type: "string" } }, required: ["filename", "content"] },
+    description: "Simpan teks (markdown/txt/html/csv) ke Drive project. Untuk dokumen panjang (ebook, laporan) SIMPAN PER BAGIAN: panggilan pertama mode 'new', bagian berikutnya mode 'append' dengan filename yang sama. Maks ±6.000 kata per panggilan.",
+    input_schema: { type: "object", properties: { filename: { type: "string", description: "Nama file dengan ekstensi, mis. analisis-esp.md" }, content: { type: "string" }, mode: { type: "string", enum: ["new", "append"], default: "new", description: "new = file baru; append = tambahkan ke akhir file bernama sama" } }, required: ["filename", "content"] },
   },
   read_drive_file: {
     name: "read_drive_file",
@@ -79,7 +84,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     switch (name) {
       case "web_search": return await webSearch(String(input.query ?? ""), Number(input.max_results ?? 5), ctx);
       case "web_fetch": return await webFetch(String(input.url ?? ""), ctx);
-      case "save_to_drive": return await saveToDrive(String(input.filename ?? "hasil.md"), String(input.content ?? ""), ctx);
+      case "save_to_drive": return await saveToDrive(String(input.filename ?? "hasil.md"), String(input.content ?? ""), ctx, String(input.mode ?? "new"));
       case "read_drive_file": return await readDriveFile(input.name ? String(input.name) : "", Number(input.part ?? 1), ctx);
       case "keyword_research": return await keywordResearch(String(input.keyword ?? ""), String(input.country ?? "id"), ctx);
       case "voice_generate": return await voiceGenerate(input, ctx);
@@ -87,7 +92,13 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       case "landing_publish": return await landingPublish(String(input.filename ?? ""), String(input.slug ?? ""), ctx);
       case "create_task": return await createTask(input, ctx);
       case "learn_skill": return await learnSkill(input, ctx);
+      case "request_capability": return await requestCapability(input, ctx);
       default: {
+        if (name in BUILTIN_CAP_DEFS) {
+          if (!ctx.enabledCaps?.has(name)) return `Gagal: kemampuan ${name} belum diaktifkan admin. Ajukan dengan request_capability.`;
+          return (await runBuiltinCap(name, input, ctx)) ?? `Tool ${name} tidak dikenal.`;
+        }
+        if (ctx.httpCaps?.[name]) return await runHttpCap(ctx.httpCaps[name], input, ctx.keys);
         const r = await runDomainTool(name, input, ctx.keys);
         return r ?? `Tool ${name} tidak dikenal.`;
       }
@@ -127,10 +138,23 @@ async function webFetch(url: string, _ctx: ToolCtx): Promise<string> {
   return clip(t, 12000);
 }
 
-async function saveToDrive(filename: string, content: string, ctx: ToolCtx): Promise<string> {
+async function saveToDrive(filename: string, content: string, ctx: ToolCtx, mode = "new"): Promise<string> {
+  if (!content.trim()) return "Isi kosong — tidak ada yang disimpan. Jika isinya panjang, kirim per bagian (mode append).";
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
   const ext = (safe.split(".").pop() || "md").toLowerCase();
   const mime = ext === "html" ? "text/html" : ext === "csv" ? "text/csv" : ext === "json" ? "application/json" : ext === "txt" ? "text/plain" : "text/markdown";
+  if (mode === "append") {
+    const { data: prev } = await ctx.supabase.from("files").select("id,storage_path,size_bytes").eq("project_id", ctx.projectId).eq("title", safe).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (prev) {
+      const { data: dl, error: dErr } = await ctx.supabase.storage.from("drive").download(prev.storage_path);
+      if (dErr || !dl) throw new Error(dErr?.message ?? "gagal membaca file lama");
+      const merged = Buffer.from((await dl.text()) + "\n\n" + content, "utf8");
+      const { error: upErr } = await ctx.supabase.storage.from("drive").upload(prev.storage_path, merged, { contentType: mime, upsert: true });
+      if (upErr) throw new Error(upErr.message);
+      await ctx.supabase.from("files").update({ size_bytes: merged.length }).eq("id", prev.id);
+      return `Ditambahkan ke "${safe}" (total ${Math.round(merged.length / 1024)} KB).`;
+    }
+  }
   const path = `${ctx.projectId}/${Date.now()}-${safe}`;
   const bytes = Buffer.from(content, "utf8");
   const { error: upErr } = await ctx.supabase.storage.from("drive").upload(path, bytes, { contentType: mime });
@@ -279,4 +303,41 @@ async function learnSkill(input: Record<string, unknown>, ctx: ToolCtx): Promise
   });
   if (error) throw new Error(error.message);
   return `Pengetahuan "${title}" disimpan dan akan dipakai di percakapan berikutnya.`;
+}
+
+async function requestCapability(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
+  const title = String(input.title ?? "").trim();
+  const reason = String(input.reason ?? "").trim();
+  let kind = String(input.kind ?? "dev");
+  if (!title || !reason) return "Judul dan alasan wajib diisi.";
+  let capKey: string | null = input.capability_key ? String(input.capability_key) : null;
+  let spec: unknown = null;
+  if (capKey && capKey in BUILTIN_CAP_DEFS) kind = "builtin";
+  if (kind === "builtin") {
+    if (!capKey || !(capKey in BUILTIN_CAP_DEFS)) { kind = "dev"; capKey = null; }
+    else if (ctx.enabledCaps?.has(capKey)) return `Kemampuan ${capKey} sudah aktif — langsung pakai tool ${capKey}.`;
+  }
+  if (kind === "http") {
+    spec = input.http_spec ?? null;
+    const err = validateHttpSpec(spec);
+    if (err) return `Spesifikasi HTTP ditolak: ${err}. Perbaiki atau ajukan sebagai kind='dev'.`;
+  }
+  if (!["builtin", "http", "dev"].includes(kind)) kind = "dev";
+  // hindari duplikat permintaan yang masih menunggu
+  let dupQ = ctx.supabase.from("capability_requests").select("id").eq("org_id", ctx.orgId).eq("status", kind === "dev" ? "needs_dev" : "pending");
+  dupQ = capKey ? dupQ.eq("capability_key", capKey) : dupQ.eq("title", title);
+  const { data: dup } = await dupQ.limit(1);
+  if (dup?.length) return `Permintaan "${title}" sudah diajukan dan masih menunggu admin (Pengaturan → Kemampuan). Beri tahu user.`;
+  const { error } = await ctx.supabase.from("capability_requests").insert({
+    org_id: ctx.orgId, agent_id: ctx.agentId, conversation_id: ctx.conversationId, requested_by: ctx.userId,
+    title, reason, user_request: input.user_request ? String(input.user_request).slice(0, 2000) : null,
+    kind, capability_key: capKey, spec, status: kind === "dev" ? "needs_dev" : "pending",
+  });
+  if (error) {
+    if (/capability_requests/.test(error.message)) return "Gagal: fitur kemampuan belum terpasang (migrasi 0009 belum dijalankan). Beri tahu user/admin.";
+    throw new Error(error.message);
+  }
+  return kind === "dev"
+    ? `Permintaan "${title}" dicatat sebagai kebutuhan pengembangan. Admin akan melihatnya di Pengaturan → Kemampuan.`
+    : `Permintaan "${title}" diajukan. Admin organisasi bisa menyetujuinya di Pengaturan → Kemampuan; setelah disetujui, kemampuan langsung tersedia di pesan berikutnya.`;
 }

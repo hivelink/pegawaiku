@@ -16,6 +16,7 @@ export type LlmStep = {
   text: string;
   toolCalls: { id: string; name: string; input: Record<string, unknown> }[];
   usage: { input: number; output: number };
+  stopReason?: string; // "end_turn" | "tool_use" | "max_tokens" | ...
 };
 
 export type ProviderCfg = { provider: string; model: string; apiKey: string; extra?: Record<string, string> };
@@ -48,14 +49,29 @@ export async function llmStep(
   messages: ChatMsg[],
   tools: ToolDef[],
   onText: (t: string) => void,
-  maxTokens = 4096
+  maxTokens = 16000,
+  signal?: AbortSignal
 ): Promise<LlmStep> {
-  if (cfg.provider === "anthropic") return anthropicStep(cfg, system, messages, tools, onText, maxTokens);
+  if (cfg.provider === "anthropic") return anthropicStep(cfg, system, messages, tools, onText, maxTokens, signal);
   if (cfg.provider === "cloudflare") return cloudflareStep(cfg, system, messages, onText);
-  return openaiCompatStep(cfg, system, messages, tools, onText, maxTokens);
+  return openaiCompatStep(cfg, system, messages, tools, onText, Math.min(maxTokens, 8192), signal);
 }
 
-async function anthropicStep(cfg: ProviderCfg, system: string, messages: ChatMsg[], tools: ToolDef[], onText: (t: string) => void, maxTokens: number): Promise<LlmStep> {
+/** Bersihkan riwayat: buang pesan kosong & gabungkan peran berurutan yang sama (mencegah error 400 provider). */
+export function sanitizeHistory(msgs: { role: "user" | "assistant"; content: string }[]): ChatMsg[] {
+  const out: { role: "user" | "assistant"; content: string }[] = [];
+  for (const m of msgs) {
+    const c = (m.content ?? "").trim();
+    if (!c) continue;
+    const last = out[out.length - 1];
+    if (last && last.role === m.role) last.content += "\n\n" + c;
+    else out.push({ role: m.role, content: c });
+  }
+  while (out.length && out[0].role !== "user") out.shift();
+  return out;
+}
+
+async function anthropicStep(cfg: ProviderCfg, system: string, messages: ChatMsg[], tools: ToolDef[], onText: (t: string) => void, maxTokens: number, signal?: AbortSignal): Promise<LlmStep> {
   const client = new Anthropic({ apiKey: cfg.apiKey });
   const msgs: Anthropic.MessageParam[] = messages.map((m) => {
     if (m.role === "assistant_tool_calls") {
@@ -72,7 +88,7 @@ async function anthropicStep(cfg: ProviderCfg, system: string, messages: ChatMsg
   const stream = client.messages.stream({
     model: cfg.model, max_tokens: maxTokens, system, messages: msgs,
     tools: tools.length ? tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema as Anthropic.Tool["input_schema"] })) : undefined,
-  });
+  }, { signal });
   let text = "";
   for await (const ev of stream) {
     if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") { text += ev.delta.text; onText(ev.delta.text); }
@@ -82,10 +98,10 @@ async function anthropicStep(cfg: ProviderCfg, system: string, messages: ChatMsg
     const t = c as Anthropic.ToolUseBlock;
     return { id: t.id, name: t.name, input: (t.input ?? {}) as Record<string, unknown> };
   });
-  return { text, toolCalls, usage: { input: final.usage.input_tokens, output: final.usage.output_tokens } };
+  return { text, toolCalls, usage: { input: final.usage.input_tokens, output: final.usage.output_tokens }, stopReason: final.stop_reason ?? undefined };
 }
 
-async function openaiCompatStep(cfg: ProviderCfg, system: string, messages: ChatMsg[], tools: ToolDef[], onText: (t: string) => void, maxTokens: number): Promise<LlmStep> {
+async function openaiCompatStep(cfg: ProviderCfg, system: string, messages: ChatMsg[], tools: ToolDef[], onText: (t: string) => void, maxTokens: number, signal?: AbortSignal): Promise<LlmStep> {
   const base = OPENAI_BASES[cfg.provider] ?? cfg.extra?.base;
   if (!base) throw new Error(`Provider ${cfg.provider} belum didukung`);
   type OMsg = { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string };
@@ -101,7 +117,7 @@ async function openaiCompatStep(cfg: ProviderCfg, system: string, messages: Chat
   if (tools.length) body.tools = tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }));
   const headers: Record<string, string> = { "content-type": "application/json", authorization: `Bearer ${cfg.apiKey}` };
   if (cfg.provider === "openrouter") { headers["HTTP-Referer"] = "https://pegawaiku.vercel.app"; headers["X-Title"] = "PegawaiKu"; }
-  const r = await fetch(`${base}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
+  const r = await fetch(`${base}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error?.message ?? j.message ?? `HTTP ${r.status}`);
   const choice = j.choices?.[0];
@@ -112,7 +128,8 @@ async function openaiCompatStep(cfg: ProviderCfg, system: string, messages: Chat
     try { input = JSON.parse(c.function.arguments || "{}"); } catch { /* abaikan */ }
     return { id: c.id, name: c.function.name, input };
   });
-  return { text, toolCalls, usage: { input: j.usage?.prompt_tokens ?? 0, output: j.usage?.completion_tokens ?? 0 } };
+  const fr = choice?.finish_reason as string | undefined;
+  return { text, toolCalls, usage: { input: j.usage?.prompt_tokens ?? 0, output: j.usage?.completion_tokens ?? 0 }, stopReason: fr === "length" ? "max_tokens" : fr };
 }
 
 async function cloudflareStep(cfg: ProviderCfg, system: string, messages: ChatMsg[], onText: (t: string) => void): Promise<LlmStep> {
