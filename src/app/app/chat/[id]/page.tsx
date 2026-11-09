@@ -10,7 +10,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
   const { supabase } = await getContext();
   const { data: conv } = await supabase
     .from("conversations")
-    .select("id,title,project_id,agent_id,agent:agents(id,slug,display_name,title,avatar_url)")
+    .select("id,title,project_id,agent_id,agent:agents!agent_id(id,slug,display_name,title,avatar_url)")
     .eq("id", id)
     .single();
   if (!conv) notFound();

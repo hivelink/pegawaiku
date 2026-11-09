@@ -142,7 +142,7 @@ export async function runBuiltinCap(name: string, input: Record<string, unknown>
       return `Info project diperbarui: ${Object.keys(patch).join(", ")}.`;
     }
     case "list_conversations": {
-      const { data, error } = await sb.from("conversations").select("id,title,updated_at,agent:agents(display_name)").eq("project_id", ctx.projectId).order("updated_at", { ascending: false }).limit(30);
+      const { data, error } = await sb.from("conversations").select("id,title,updated_at,agent:agents!agent_id(display_name)").eq("project_id", ctx.projectId).order("updated_at", { ascending: false }).limit(30);
       if (error) throw new Error(error.message);
       return (data ?? []).filter((c) => c.id !== ctx.conversationId).map((c) => `- ${c.title} · ${(c.agent as unknown as { display_name?: string } | null)?.display_name ?? "?"} (id: ${c.id})`).join("\n") || "Tidak ada percakapan lain.";
     }

@@ -77,7 +77,7 @@ export async function POST(req: Request) {
 
   const { data: conv } = await supabase
     .from("conversations")
-    .select(`id,project_id,title,agent_id,agent:agents(${AGENT_COLS}),project:projects(id,org_id,name,tagline,description,brand,category,website)`)
+    .select(`id,project_id,title,agent_id,agent:agents!agent_id(${AGENT_COLS}),project:projects(id,org_id,name,tagline,description,brand,category,website)`)
     .eq("id", conversationId)
     .single();
   if (!conv) return NextResponse.json({ error: "not found" }, { status: 404 });

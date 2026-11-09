@@ -17,7 +17,7 @@ export default async function ProjectChatPage({ searchParams }: { searchParams: 
   if (!project) return <Card className="p-8 text-sm text-muted">Belum ada project. Buat project di menu <a className="text-primary underline" href="/app/projects">Project</a>.</Card>;
 
   const [{ data: convs }, { data: hired }] = await Promise.all([
-    supabase.from("conversations").select("id,title,updated_at,agent:agents(id,slug,display_name,title,avatar_url)").eq("project_id", project.id).order("updated_at", { ascending: false }).limit(100),
+    supabase.from("conversations").select("id,title,updated_at,agent:agents!agent_id(id,slug,display_name,title,avatar_url)").eq("project_id", project.id).order("updated_at", { ascending: false }).limit(100),
     supabase.from("project_agents").select("agent:agents(id,slug,display_name,title,avatar_url)").eq("project_id", project.id),
   ]);
   type C = { id: string; title: string | null; updated_at: string; agent: A | null };

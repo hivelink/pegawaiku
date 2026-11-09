@@ -21,7 +21,7 @@ export default async function AppHome() {
 
   const [{ data: hired }, { data: convs }, { data: tasks }] = await Promise.all([
     project ? supabase.from("project_agents").select("agent:agents(slug,display_name,title,avatar_url)").eq("project_id", project.id) : Promise.resolve({ data: [] }),
-    project ? supabase.from("conversations").select("id,title,updated_at,agent:agents(display_name,avatar_url)").eq("project_id", project.id).order("updated_at", { ascending: false }).limit(6) : Promise.resolve({ data: [] }),
+    project ? supabase.from("conversations").select("id,title,updated_at,agent:agents!agent_id(display_name,avatar_url)").eq("project_id", project.id).order("updated_at", { ascending: false }).limit(6) : Promise.resolve({ data: [] }),
     project ? supabase.from("tasks").select("id,title,status").eq("project_id", project.id).neq("status", "done").limit(6) : Promise.resolve({ data: [] }),
   ]);
 

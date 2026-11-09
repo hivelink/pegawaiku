@@ -61,7 +61,7 @@ export default async function ProjectWorkspacePage() {
   const [{ data: tasks }, { data: hired }, { data: convs }, { data: files }, { data: members }, { data: owner }, { data: ptools }, { data: gens }] = await Promise.all([
     supabase.from("tasks").select("id,title,status,agent:agents(display_name)").eq("project_id", project.id).order("updated_at", { ascending: false }),
     supabase.from("project_agents").select("agent:agents(slug,display_name,title,avatar_url)").eq("project_id", project.id).order("hired_at", { ascending: false }),
-    supabase.from("conversations").select("id,title,updated_at,agent:agents(display_name,avatar_url)").eq("project_id", project.id).order("updated_at", { ascending: false }).limit(4),
+    supabase.from("conversations").select("id,title,updated_at,agent:agents!agent_id(display_name,avatar_url)").eq("project_id", project.id).order("updated_at", { ascending: false }).limit(4),
     supabase.from("files").select("id,title,kind,size_bytes,created_at").eq("project_id", project.id).order("created_at", { ascending: false }).limit(5),
     supabase.from("org_members").select("role,user_id,profile:profiles(full_name,email,avatar_url)").eq("org_id", org.id),
     supabase.from("profiles").select("full_name,email").eq("id", project.created_by ?? org.owner_id).maybeSingle(),
