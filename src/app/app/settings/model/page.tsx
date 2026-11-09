@@ -3,7 +3,7 @@ import { Cpu, Gift, KeyRound, Check } from "lucide-react";
 import { getContext } from "@/lib/context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { setChatModel } from "../../actions";
+import { setChatModel, setFallbackModel } from "../../actions";
 
 export default async function ModelSettingsPage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
   const sp = await searchParams;
@@ -16,6 +16,10 @@ export default async function ModelSettingsPage({ searchParams }: { searchParams
   ]);
   const keys = new Set((keyRows ?? []).map((k) => k.provider));
   const current = orgRow?.chat_model ?? "anthropic/claude-sonnet-5-5";
+  const fbRow = await supabase.from("organizations").select("fallback_model").eq("id", org.id).single();
+  const fbReady = !fbRow.error;
+  const fallbackId = (fbRow.data?.fallback_model as string | null) ?? "";
+  const fbOptions = (models ?? []).filter((m) => m.id !== current && m.key_provider !== "cloudflare" && keys.has(m.key_provider));
 
   return (
     <div className="space-y-5">
@@ -46,6 +50,20 @@ export default async function ModelSettingsPage({ searchParams }: { searchParams
           );
         })}
         <Button type="submit">Simpan pilihan</Button>
+      </form>
+
+      <form action={setFallbackModel} className="space-y-3 rounded-2xl border border-border bg-card p-4">
+        <div>
+          <h2 className="text-base font-bold text-primary">Model cadangan (otomatis)</h2>
+          <p className="mt-1 text-xs text-muted">Bila model utama gagal karena kredit/kuota habis, kunci bermasalah, atau terkena limit, pegawai AI langsung pindah ke model ini dan melanjutkan pekerjaan tanpa terputus. Hanya model dari penyedia yang kuncinya sudah Anda pasang yang bisa dipilih.</p>
+        </div>
+        {!fbReady && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Fitur ini butuh migrasi 0013 — jalankan di Pengaturan → Pembaruan.</p>}
+        <select name="fallback_id" defaultValue={fallbackId} disabled={!fbReady} className="h-10 w-full rounded-lg border border-border bg-white px-3 text-sm">
+          <option value="">Tidak ada cadangan</option>
+          {fbOptions.map((m) => <option key={m.id} value={m.id}>{m.name} · {m.provider}{m.free_tier ? " (gratis)" : ""}</option>)}
+        </select>
+        {fbOptions.length === 0 && <Link href="/app/settings/api-keys" className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><KeyRound size={11} /> Pasang kunci OpenAI/Gemini/Groq dulu agar bisa dipilih sebagai cadangan</Link>}
+        <Button type="submit" disabled={!fbReady}>Simpan model cadangan</Button>
       </form>
 
       <Card className="p-4 text-xs text-muted">

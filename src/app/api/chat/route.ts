@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { logEvent, describeError } from "@/lib/log";
 import { createClient } from "@/lib/supabase/server";
 import { creditCost } from "@/lib/utils";
-import { llmStep, splitModelId, sanitizeHistory, type ChatMsg, type ToolResult } from "@/lib/llm";
+import { llmStep, splitModelId, sanitizeHistory, type ChatMsg, type ToolDef, type ToolResult } from "@/lib/llm";
 import { findAgent } from "@/lib/mentions";
 import { encodeChoice } from "@/lib/choices";
 import { TOOL_DEFS, runTool, viewImage, type ToolCtx } from "@/lib/agent-tools";
@@ -107,13 +107,29 @@ export async function POST(req: Request) {
   const multiReady = !partRes.error; // migrasi 0011 sudah dijalankan
 
   const keys: Record<string, string> = Object.fromEntries((keyRows ?? []).map((k) => [k.provider, k.secret]));
-  const { keyProvider, model } = splitModelId(org.chat_model || "anthropic/claude-sonnet-5-5");
-  const apiKey = keys[keyProvider] ?? (keyProvider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined);
-  if (!apiKey) return NextResponse.json({ error: `Kunci API ${keyProvider} belum diatur (Pengaturan → Kunci API), atau ganti model chat di Pengaturan → Model AI.` }, { status: 400 });
-  const usesPlatformKey = keyProvider === "anthropic" && !keys.anthropic;
-  if (usesPlatformKey && Number(org.credit_balance) <= 0) {
-    return NextResponse.json({ error: "Kredit habis. Top up di menu Billing, atau pasang kunci API sendiri (gratis: Groq/Gemini) di Pengaturan." }, { status: 402 });
+  // ---- Pemilihan model utama & cadangan (Pengaturan → Model AI) ----
+  type Active = { keyProvider: string; model: string; apiKey: string; usesPlatformKey: boolean; isFallback: boolean };
+  const mkActive = (id: string, isFallback: boolean): Active | null => {
+    const { keyProvider, model } = splitModelId(id);
+    const apiKey = keys[keyProvider] ?? (keyProvider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined);
+    if (!apiKey) return null;
+    return { keyProvider, model, apiKey, usesPlatformKey: keyProvider === "anthropic" && !keys.anthropic, isFallback };
+  };
+  const primary = mkActive(org.chat_model || "anthropic/claude-sonnet-5-5", false);
+  const fbRes = await supabase.from("organizations").select("fallback_model").eq("id", project.org_id).single(); // kolom ada setelah migrasi 0013
+  let fallback = fbRes.data?.fallback_model ? mkActive(String(fbRes.data.fallback_model), true) : null;
+  if (fallback && primary && fallback.keyProvider === primary.keyProvider && fallback.model === primary.model) fallback = null;
+  if (fallback?.usesPlatformKey && Number(org.credit_balance) <= 0) fallback = null; // cadangan berbayar kredit pun tak berguna bila kredit habis
+  const primaryUsable = !!primary && !(primary.usesPlatformKey && Number(org.credit_balance) <= 0);
+  let active: Active | null = primaryUsable ? primary : fallback;
+  let fallbackNote = "";
+  if (active?.isFallback) fallbackNote = primary ? "kredit/akses model utama habis" : "kunci model utama belum diatur";
+  if (!active) {
+    if (!primary) return NextResponse.json({ error: `Kunci API ${splitModelId(org.chat_model || "anthropic/claude-sonnet-5-5").keyProvider} belum diatur (Pengaturan → Kunci API), atau ganti model chat di Pengaturan → Model AI.` }, { status: 400 });
+    return NextResponse.json({ error: "Kredit habis. Top up di menu Billing, atau pasang kunci API sendiri (mis. OpenAI/Gemini/Groq) lalu pilih Model cadangan di Pengaturan → Model AI agar pekerjaan berlanjut otomatis." }, { status: 402 });
   }
+  const BILLING_RE = /credit balance|too low|billing|insufficient|quota|exceeded your current|payment|purchase credits|invalid[ _-]?(x-)?api[ _-]?key|authentication|unauthorized|permission_denied|rate.?limit|too many requests|overloaded|\b(401|402|403|429|529)\b/i;
+  const visionProviders = ["anthropic", "google", "openai"];
 
   // kemampuan yang disetujui admin (tabel bisa belum ada bila migrasi 0009 belum dijalankan → kosong)
   const enabledCaps = new Set((capRows ?? []).map((c) => c.capability_key as string));
@@ -195,7 +211,7 @@ export async function POST(req: Request) {
       ...(agent.requires_tools ?? []),
       ...skills.flatMap((s) => s.requires_tools ?? []),
       "merge_drive_files", ...ALWAYS_ON_CAPS,
-      ...(["anthropic", "google", "openai"].includes(keyProvider) ? ["view_image"] : []), // model tanpa kemampuan visual menolak gambar
+      ...(visionProviders.includes(active!.keyProvider) ? ["view_image"] : []), // model tanpa kemampuan visual menolak gambar
       ...(depth === 0 ? ["ask_user"] : []), // agent hasil delegasi melapor ke pendelegasi, bukan bertanya ke user
       ...(multiReady && depth === 0 ? ["delegate_agent"] : []), // agent hasil delegasi tidak mendelegasikan lagi (cegah rantai tak berujung)
       ...(capsReady ? ["request_capability"] : []),
@@ -238,7 +254,7 @@ export async function POST(req: Request) {
         return { agent, text: "", inTok: 0, outTok: 0 };
       }
       async function flushSeg(seg: Seg) {
-        const cost = usesPlatformKey ? creditCost(seg.inTok, seg.outTok) : 0;
+        const cost = active!.usesPlatformKey ? creditCost(seg.inTok, seg.outTok) : 0;
         totalCost += cost; totalIn += seg.inTok; totalOut += seg.outTok;
         try {
           let msgId: string | null = null;
@@ -252,6 +268,32 @@ export async function POST(req: Request) {
           if (cost > 0) await supabase.rpc("apply_credit", { p_org: project.org_id, p_amount: -cost, p_kind: "usage", p_reference: msgId, p_note: `${seg.agent.display_name}: ${seg.inTok}+${seg.outTok} token` });
         } catch { /* abaikan */ }
         seg.text = ""; seg.inTok = 0; seg.outTok = 0;
+      }
+
+      /** Panggil LLM; bila model utama gagal karena kredit/kuota/kunci/limit, pindah otomatis ke model cadangan lalu ulangi. */
+      let switched = false;
+      async function callLlm(system: string, messages: ChatMsg[], tools: ToolDef[], add: (t: string) => void, maxTokens: number, signal: AbortSignal) {
+        if (fallbackNote) {
+          status({ type: "fallback", to: active!.keyProvider, model: active!.model });
+          add(`\n\n_🔁 ${fallbackNote} — memakai model cadangan: ${active!.model} (${active!.keyProvider})._\n\n`);
+          fallbackNote = "";
+        }
+        let wrote = false;
+        const addW = (t: string) => { if (t) wrote = true; add(t); };
+        const run = (a: Active, tl: ToolDef[]) => llmStep({ provider: a.keyProvider, model: a.model, apiKey: a.apiKey }, system, messages, tl, addW, maxTokens, signal);
+        try {
+          return await run(active!, tools);
+        } catch (e) {
+          const msg = String((e as Error)?.message ?? e) + " " + String((e as { status?: number })?.status ?? "");
+          if (switched || !fallback || active!.isFallback || wrote || signal.aborted || !BILLING_RE.test(msg)) throw e;
+          switched = true;
+          const from = active!;
+          active = fallback;
+          await logEvent("warn", "api:chat", "pindah ke model cadangan", { conversationId, from: `${from.keyProvider}/${from.model}`, to: `${active.keyProvider}/${active.model}`, reason: msg.slice(0, 300) }, project!.org_id);
+          status({ type: "fallback", from: from.keyProvider, to: active.keyProvider, model: active.model });
+          add(`\n\n_🔁 Model utama (${from.keyProvider}) tidak bisa dipakai (kredit/kuota habis atau kunci bermasalah) — otomatis memakai model cadangan: ${active.model} (${active.keyProvider})._\n\n`);
+          return await run(active, visionProviders.includes(active.keyProvider) ? tools : tools.filter((t) => t.name !== "view_image"));
+        }
       }
 
       /** Jalankan satu giliran agent (dengan tool). depth>0 = dipanggil lewat delegate_agent. Mengembalikan teks jawabannya. */
@@ -276,7 +318,7 @@ export async function POST(req: Request) {
             if (Date.now() - t0 > TIME_BUDGET_MS) { stopReason = "batas_waktu"; break; }
             status({ type: "thinking", step, max: MAX_STEPS, agent: agent.display_name, label: step === 1 ? `${agent.display_name} memahami permintaan…` : `${agent.display_name} menyusun langkah berikutnya…` });
             const deadline = AbortSignal.any([abort.signal, AbortSignal.timeout(Math.max(5_000, HARD_DEADLINE_MS - (Date.now() - t0)))]);
-            const res = await llmStep({ provider: keyProvider, model, apiKey }, system, messages, tools, add, 16000, deadline);
+            const res = await callLlm(system, messages, tools, add, 16000, deadline);
             seg.inTok += res.usage.input; seg.outTok += res.usage.output;
             if (!res.toolCalls.length) {
               if (res.stopReason === "max_tokens") add("\n\n_(Jawaban terpotong karena batas panjang — ketik \"lanjutkan\" untuk meneruskan.)_");
@@ -327,7 +369,7 @@ export async function POST(req: Request) {
                 else if (target.id === agent.id) output = "Gagal: tidak bisa mendelegasikan ke diri sendiri.";
                 else if (!briefText) output = "Gagal: brief kosong.";
                 else if (delegations >= MAX_DELEGATIONS) output = `Gagal: batas ${MAX_DELEGATIONS} delegasi per pesan tercapai. Rangkum progres dan minta user melanjutkan.`;
-                else if (usesPlatformKey && Number((await supabase.from("organizations").select("credit_balance").eq("id", project.org_id).single()).data?.credit_balance ?? 0) <= 0) output = "Gagal: kredit habis — delegasi dibatalkan. Minta user top up.";
+                else if (active!.usesPlatformKey && Number((await supabase.from("organizations").select("credit_balance").eq("id", project.org_id).single()).data?.credit_balance ?? 0) <= 0) output = "Gagal: kredit habis — delegasi dibatalkan. Minta user top up.";
                 else if (Date.now() - t0 > TIME_BUDGET_MS - 45_000) output = "Gagal: waktu kerja hampir habis — tidak cukup untuk delegasi. Rangkum progres; user bisa melanjutkan dengan pesan berikutnya.";
                 else {
                   delegations++;
@@ -366,7 +408,7 @@ export async function POST(req: Request) {
             add(`\n\n---\n_⏸ ${agent.display_name} dihentikan otomatis: ${why}._\n\n`);
             messages.push({ role: "user", content: `[SISTEM] Pekerjaan dihentikan karena ${why}. Jangan panggil tool. Tulis ringkasan singkat: (1) apa yang sudah berhasil dikerjakan/disimpan, (2) apa yang belum ditemukan atau gagal dan kemungkinan sebabnya, (3) langkah berikutnya yang akan kamu kerjakan saat dilanjutkan (sistem dapat melanjutkan otomatis), atau data apa yang dibutuhkan dari user bila memang buntu.` });
             try {
-              const res = await llmStep({ provider: keyProvider, model, apiKey }, system, messages, [], add, 2000, AbortSignal.any([abort.signal, AbortSignal.timeout(Math.max(3_000, HARD_DEADLINE_MS - (Date.now() - t0)))]));
+              const res = await callLlm(system, messages, [], add, 2000, AbortSignal.any([abort.signal, AbortSignal.timeout(Math.max(3_000, HARD_DEADLINE_MS - (Date.now() - t0)))]));
               seg.inTok += res.usage.input; seg.outTok += res.usage.output;
             } catch { /* abaikan */ }
           }
@@ -379,7 +421,7 @@ export async function POST(req: Request) {
           } else {
             stopReason = "error";
             const { message, detail } = describeError(e);
-            await logEvent("error", "api:chat", message, { ...detail, conversationId, model: org!.chat_model, provider: keyProvider, step, agent: agent.display_name }, project.org_id);
+            await logEvent("error", "api:chat", message, { ...detail, conversationId, model: active!.model, provider: active!.keyProvider, fallback: active!.isFallback, step, agent: agent.display_name }, project.org_id);
             add(`\n\n[Gagal: ${message}]`);
           }
         }

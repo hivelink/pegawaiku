@@ -340,6 +340,16 @@ async function _setChatModel(formData: FormData) {
   redirect("/app/settings/model?ok=1");
 }
 
+async function _setFallbackModel(formData: FormData) {
+  const { supabase, org } = await getContext();
+  if (!org) return;
+  const id = String(formData.get("fallback_id") ?? "");
+  const { error } = await supabase.from("organizations").update({ fallback_model: id || null }).eq("id", org.id);
+  if (error) redirect(`/app/settings/model?error=${encodeURIComponent(/fallback_model/.test(error.message) ? "Jalankan migrasi 0013 dulu di Pengaturan → Pembaruan." : error.message)}`);
+  revalidatePath("/app", "layout");
+  redirect("/app/settings/model?ok=1");
+}
+
 // ---------- Ekspor terbungkus (dengan logging) ----------
 export const switchProject = guarded("switchProject", _switchProject);
 export const updateProjectMeta = guarded("updateProjectMeta", _updateProjectMeta);
@@ -366,6 +376,7 @@ export const toggleAgentSkill = guarded("toggleAgentSkill", _toggleAgentSkill);
 export const deleteKnowledge = guarded("deleteKnowledge", _deleteKnowledge);
 export const addKnowledgeManual = guarded("addKnowledgeManual", _addKnowledgeManual);
 export const setChatModel = guarded("setChatModel", _setChatModel);
+export const setFallbackModel = guarded("setFallbackModel", _setFallbackModel);
 export const openProjectSettings = guarded("openProjectSettings", _openProjectSettings);
 
 async function _clearLogs() {
