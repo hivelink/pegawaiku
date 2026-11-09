@@ -6,7 +6,8 @@ import { formatCredit } from "@/lib/utils";
 import { signOut } from "@/app/(auth)/actions";
 import { switchOrg } from "./actions";
 import { Button } from "@/components/ui/button";
-import { SidebarNav, MOBILE_NAV } from "./sidebar-nav";
+import { SidebarNav } from "./sidebar-nav";
+import { MOBILE_NAV } from "./nav-items";
 import { Breadcrumb } from "./breadcrumb";
 
 

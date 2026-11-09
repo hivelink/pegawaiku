@@ -41,4 +41,3 @@ export function SidebarNav({ projectName }: { projectName: string | null }) {
   );
 }
 
-export const MOBILE_NAV = TOP.map(({ href, label }) => ({ href, label }));
