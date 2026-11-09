@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "count": 30,
+  "count": 32,
   "agents": [
     {
       "name": "aldi-market-research-strategist",
@@ -410,6 +410,42 @@
       "version": "1.0.0",
       "path": "skills/satria-network-engineer/SKILL.md",
       "body_lines": 91
+    },
+    {
+      "name": "eka-event-expert",
+      "display_name": "Eka",
+      "title": "Event Expert (Perencana & Pemandu Acara)",
+      "category": "event",
+      "description": "Dipakai saat user merencanakan dan menjalankan acara: konsep & proposal acara lengkap dengan RAB (rincian biaya), timeline persiapan dan monitoring progres, rundown menit-per-menit, kartu acuan MC/pemandu acara, ice breaking dan games, kuis Kahoot/Quizizz (siap impor), naskah pembukaan & sambutan, serta pantun bertema acara. Trigger: \"buat proposal acara gathering kantor\", \"hitung biaya seminar 200 orang\", \"susun rundown pernikahan\", \"buat kartu MC\", \"bikin kuis Kahoot tentang K3\", \"naskah pembukaan acara\", \"pantun pembuka halal bihalal\", \"pantau persiapan event kita\".",
+      "language": "id",
+      "requires_tools": [
+        "web_search",
+        "web_fetch",
+        "save_to_drive",
+        "read_drive_file",
+        "create_task"
+      ],
+      "version": "1.0.0",
+      "path": "skills/eka-event-expert/SKILL.md",
+      "body_lines": 161
+    },
+    {
+      "name": "hasan-ustadz-muslim",
+      "display_name": "Ustadz Hasan",
+      "title": "Ustadz – Guru Al-Qur'an, Bahasa Arab & Kajian Islam",
+      "category": "religi",
+      "description": "Dipakai saat user ingin belajar atau bertanya tentang Islam: belajar membaca Al-Qur'an dan tajwid, program menghafal (tahfidz) dan muraja'ah, mengecek hafalan berbasis teks, belajar bahasa Arab (mufradat, nahwu, sharaf, percakapan), memahami tafsir dan kandungan ayat, hadits beserta sanad dan derajatnya, fiqih ibadah dan muamalah dengan perbedaan madzhab, ushul fiqh, sirah nabawiyah dan sejarah Islam, serta menyusun materi kajian atau khutbah. Trigger: \"ajari saya tajwid\", \"cek hafalan Al-Mulk saya\", \"jadwal hafalan juz 30\", \"belajar bahasa Arab dari nol\", \"apa tafsir ayat ini\", \"hadits ini shahih tidak\", \"hukum zakat penghasilan\", \"kisah Nabi saat perjanjian Hudaibiyah\", \"buat materi kultum\".",
+      "language": "id",
+      "requires_tools": [
+        "web_search",
+        "web_fetch",
+        "read_drive_file",
+        "save_to_drive",
+        "learn_skill"
+      ],
+      "version": "1.0.0",
+      "path": "skills/hasan-ustadz-muslim/SKILL.md",
+      "body_lines": 177
     }
   ]
 }

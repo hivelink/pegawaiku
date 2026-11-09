@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Buat potret flat-vector orisinal untuk 28 pegawai AI (public/agents/<slug>.svg)."""
+"""Buat potret flat-vector orisinal untuk semua pegawai AI (public/agents/<slug>.svg)."""
 import json, os, random
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,8 +12,9 @@ BG = {
     "marketing": ("#DBEAFE", "#2563EB"), "graphic-designer": ("#EDE9FE", "#7C3AED"), "video-editor": ("#FCE7F3", "#DB2777"),
     "sales": ("#FEF3C7", "#D97706"), "hr": ("#D1FAE5", "#059669"), "finance": ("#E0F2FE", "#0284C7"),
     "management": ("#E2E8F0", "#334155"), "builder": ("#CCFBF1", "#0D9488"), "engineering": ("#FEF9C3", "#B45309"),
+    "event": ("#FFE4E6", "#E11D48"), "religi": ("#DCFCE7", "#15803D"),
 }
-FEMALE = {"dewi", "dian", "fani", "hani", "kira", "luna", "maya", "meda", "sari", "vera", "vika", "zara"}
+FEMALE = {"eka", "dewi", "dian", "fani", "hani", "kira", "luna", "maya", "meda", "sari", "vera", "vika", "zara"}
 
 def hair_svg(style, color, long_hair):
     # Semua bentuk relatif ke kepala: pusat (48,44), radius 20
@@ -34,6 +35,9 @@ def hair_svg(style, color, long_hair):
     if style == "bob":
         return (f'<path d="M27 46c0-15 9-24 21-24s21 9 21 24v12c0 2-2 4-4 4H31c-2 0-4-2-4-4V46z" fill="{color}"/>'
                 f'<path d="M30 46c3-8 9-12 18-12s15 4 18 12c-4-4-10-5-18-5s-14 1-18 5z" fill="{color}"/>')
+    if style == "peci":
+        return (f'<path d="M30 36c0-9 8-14 18-14s18 5 18 14z" fill="#111827"/>'
+                f'<rect x="29" y="33" width="38" height="5" rx="1.5" fill="#1F2937"/>')
     if style == "cap":
         return (f'<path d="M27 37c0-12 9-20 21-20s21 8 21 20H27z" fill="{color}"/>'
                 f'<rect x="23" y="35" width="42" height="4.5" rx="2.2" fill="{color}"/>')
@@ -50,6 +54,8 @@ def avatar(slug, name, cat, i):
     shirt = accent
     glasses = rnd.random() < 0.3
     beard = (not female) and rnd.random() < 0.3
+    if cat == "religi":
+        style, beard, glasses = "peci", True, False
     smile = rnd.choice(["M41 54q7 6 14 0", "M42 54q6 4 12 0", "M41 53q7 7 14 0"])
     earring = female and rnd.random() < 0.5
     parts = [
