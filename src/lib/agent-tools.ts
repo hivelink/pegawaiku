@@ -286,6 +286,9 @@ async function landingPublish(filename: string, slug: string, ctx: ToolCtx): Pro
 async function createTask(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
   const title = String(input.title ?? "").trim();
   if (!title) return "Judul tugas kosong.";
+  // cegah input ganda: tugas dengan judul sama yang belum selesai
+  const { data: same } = await ctx.supabase.from("tasks").select("id,status").eq("project_id", ctx.projectId).ilike("title", title.replace(/[%_]/g, "\\$&")).neq("status", "done").limit(1);
+  if (same?.length) return `Tugas "${title}" sudah ada di board (status ${same[0].status}) — tidak dibuat ulang. Gunakan update_task bila perlu mengubahnya.`;
   const { error } = await ctx.supabase.from("tasks").insert({
     project_id: ctx.projectId, title, description: input.description ? String(input.description) : null,
     status: (input.status as string) || "todo", agent_id: ctx.agentId, created_by: ctx.userId,

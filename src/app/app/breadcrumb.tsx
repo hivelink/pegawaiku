@@ -25,7 +25,7 @@ export function Breadcrumb({ projectName, email, agentName, pendingCaps = 0 }: {
   } else if (segs[1] === "chat") {
     crumbs.push({ label: "project", href: "/app/projects" });
     if (projectName) crumbs.push({ label: projectName, href: "/app/project" });
-    crumbs.push({ label: "chat", href: path });
+    crumbs.push({ label: "chat", href: "/app/project/chat" });
   } else if (segs[1] === "tasks") {
     crumbs.push({ label: "project", href: "/app/projects" });
     if (projectName) crumbs.push({ label: projectName, href: "/app/project" });

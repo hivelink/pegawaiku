@@ -133,18 +133,57 @@ async function _redeemVoucher(formData: FormData) {
   redirect("/app/billing?ok=1");
 }
 
+const normTitle = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+
 async function _createTask(formData: FormData) {
   const { supabase, project, user } = await getContext();
   if (!project) return;
-  const title = String(formData.get("title") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim().replace(/\s+/g, " ");
   if (!title) return;
-  await supabase.from("tasks").insert({ project_id: project.id, title, created_by: user.id, agent_id: formData.get("agent_id") || null });
+  const agentId = String(formData.get("agent_id") ?? "") || null;
+  // deteksi input ganda: judul sama (tanpa beda huruf besar/spasi) yang belum selesai
+  if (String(formData.get("force")) !== "1") {
+    const { data: same } = await supabase.from("tasks").select("id,title,status").eq("project_id", project.id).ilike("title", title.replace(/[%_]/g, "\\$&")).neq("status", "done").limit(1);
+    if (same?.length) {
+      const q = new URLSearchParams({ dup: title, ...(agentId ? { agent: agentId } : {}) });
+      redirect(`/app/tasks?${q.toString()}`);
+    }
+  }
+  const { error } = await supabase.from("tasks").insert({ project_id: project.id, title, created_by: user.id, agent_id: agentId });
+  if (error) throw error;
   revalidatePath("/app/tasks");
+  redirect("/app/tasks");
+}
+
+async function _deleteTask(formData: FormData) {
+  const { supabase, project } = await getContext();
+  if (!project) return;
+  const { error } = await supabase.from("tasks").delete().eq("id", String(formData.get("id"))).eq("project_id", project.id);
+  if (error) throw error;
+  revalidatePath("/app/tasks");
+  revalidatePath("/app/project");
+}
+
+/** Hapus tugas ganda: untuk judul yang sama, simpan yang paling lama dibuat, hapus sisanya. */
+async function _dedupeTasks() {
+  const { supabase, project } = await getContext();
+  if (!project) return;
+  const { data } = await supabase.from("tasks").select("id,title,created_at").eq("project_id", project.id).order("created_at");
+  const seen = new Set<string>();
+  const drop: string[] = [];
+  for (const t of data ?? []) { const k = normTitle(t.title); if (seen.has(k)) drop.push(t.id); else seen.add(k); }
+  if (drop.length) {
+    const { error } = await supabase.from("tasks").delete().in("id", drop).eq("project_id", project.id);
+    if (error) throw error;
+  }
+  revalidatePath("/app/tasks");
+  revalidatePath("/app/project");
 }
 
 async function _moveTask(formData: FormData) {
   const { supabase } = await getContext();
-  await supabase.from("tasks").update({ status: String(formData.get("status")), updated_at: new Date().toISOString() }).eq("id", String(formData.get("id")));
+  const { error } = await supabase.from("tasks").update({ status: String(formData.get("status")), updated_at: new Date().toISOString() }).eq("id", String(formData.get("id")));
+  if (error) throw error;
   revalidatePath("/app/tasks");
 }
 
@@ -312,6 +351,8 @@ export const startConversation = guarded("startConversation", _startConversation
 export const redeemVoucher = guarded("redeemVoucher", _redeemVoucher);
 export const createTask = guarded("createTask", _createTask);
 export const moveTask = guarded("moveTask", _moveTask);
+export const deleteTask = guarded("deleteTask", _deleteTask);
+export const dedupeTasks = guarded("dedupeTasks", _dedupeTasks as (fd: FormData) => Promise<void>);
 export const deleteFile = guarded("deleteFile", _deleteFile);
 export const deleteProject = guarded("deleteProject", _deleteProject);
 export const renameProject = guarded("renameProject", _renameProject);
@@ -426,3 +467,33 @@ async function _removeConversationAgent(formData: FormData) {
 
 export const addConversationAgent = guarded("addConversationAgent", _addConversationAgent);
 export const removeConversationAgent = guarded("removeConversationAgent", _removeConversationAgent);
+
+// ---------- Chat diskusi project ----------
+async function _startGroupChat(formData: FormData) {
+  const { supabase, project, user } = await getContext();
+  if (!project) redirect("/app/projects");
+  const ids = formData.getAll("agent_id").map(String).filter(Boolean);
+  if (!ids.length) redirect("/app/project/chat?err=agent");
+  const topic = String(formData.get("title") ?? "").trim();
+  const { data, error } = await supabase
+    .from("conversations")
+    .insert({ project_id: project.id, agent_id: ids[0], user_id: user.id, title: topic || "Percakapan baru" })
+    .select("id")
+    .single();
+  if (error) throw error;
+  await supabase.from("conversation_agents").upsert(ids.map((agent_id) => ({ conversation_id: data.id, agent_id, added_by: user.id })), { onConflict: "conversation_id,agent_id" });
+  revalidatePath("/app/project/chat");
+  redirect(`/app/chat/${data.id}`);
+}
+
+async function _deleteConversation(formData: FormData) {
+  const { supabase, project } = await getContext();
+  if (!project) return;
+  const { error } = await supabase.from("conversations").delete().eq("id", String(formData.get("id"))).eq("project_id", project.id);
+  if (error) throw error;
+  revalidatePath("/app/project/chat");
+  revalidatePath("/app/project");
+}
+
+export const startGroupChat = guarded("startGroupChat", _startGroupChat);
+export const deleteConversation = guarded("deleteConversation", _deleteConversation);

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, HardDrive, KanbanSquare, CreditCard, FolderOpen, Folder, Settings, Bot } from "lucide-react";
+import { Home, Users, HardDrive, KanbanSquare, CreditCard, FolderOpen, Folder, Settings, Bot, MessagesSquare } from "lucide-react";
 
 const TOP = [
   { href: "/app", label: "Home", icon: Home, exact: true },
@@ -25,10 +25,11 @@ export function SidebarNav({ projectName }: { projectName: string | null }) {
           <Link href={href} className={item(isOn(href, exact, match))}><Icon size={18} className="text-primary" /> {label}</Link>
           {href === "/app/projects" && projectName && (
             <div className="ml-5 mt-1 space-y-0.5 border-l border-border pl-2">
-              <Link href="/app/project" className={sub(path === "/app/project" || /^\/app\/project\/(settings|ai|tools|landing|users)/.test(path) || path.startsWith("/app/chat"))} title={projectName}>
+              <Link href="/app/project" className={sub(path === "/app/project" || /^\/app\/project\/(settings|ai|tools|landing|users)/.test(path))} title={projectName}>
                 <FolderOpen size={15} className="shrink-0 text-accent" /><span className="truncate">{projectName}</span>
               </Link>
               <div className="ml-4 space-y-0.5">
+                <Link href="/app/project/chat" className={sub(path.startsWith("/app/project/chat") || path.startsWith("/app/chat"))}><MessagesSquare size={14} /> Chat</Link>
                 <Link href="/app/project/agents" className={sub(path.startsWith("/app/project/agents"))}><Bot size={14} /> Agent</Link>
                 <Link href="/app/tasks" className={sub(path.startsWith("/app/tasks"))}><KanbanSquare size={14} /> Task</Link>
                 <Link href="/app/project/drive" className={sub(path.startsWith("/app/project/drive"))}><HardDrive size={14} /> Drive</Link>
