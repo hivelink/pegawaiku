@@ -10,7 +10,11 @@ export type ToolDef = { name: string; description: string; input_schema: Record<
 export type ChatMsg =
   | { role: "user" | "assistant"; content: string }
   | { role: "assistant_tool_calls"; calls: { id: string; name: string; input: Record<string, unknown> }[]; text?: string }
-  | { role: "tool_results"; results: { id: string; name: string; output: string }[] };
+  | { role: "tool_results"; results: ToolResult[] };
+
+/** Gambar yang dilampirkan ke hasil tool (mis. view_image) agar model bisa melihatnya. */
+export type ToolImage = { mime: string; b64: string };
+export type ToolResult = { id: string; name: string; output: string; images?: ToolImage[] };
 
 export type LlmStep = {
   text: string;
@@ -81,7 +85,16 @@ async function anthropicStep(cfg: ProviderCfg, system: string, messages: ChatMsg
       return { role: "assistant", content };
     }
     if (m.role === "tool_results") {
-      return { role: "user", content: m.results.map((r) => ({ type: "tool_result" as const, tool_use_id: r.id, content: r.output })) };
+      return {
+        role: "user",
+        content: m.results.map((r) => ({
+          type: "tool_result" as const,
+          tool_use_id: r.id,
+          content: r.images?.length
+            ? [{ type: "text" as const, text: r.output }, ...r.images.map((im) => ({ type: "image" as const, source: { type: "base64" as const, media_type: im.mime as "image/png", data: im.b64 } }))]
+            : r.output,
+        })),
+      };
     }
     return { role: m.role, content: m.content };
   });
@@ -104,13 +117,16 @@ async function anthropicStep(cfg: ProviderCfg, system: string, messages: ChatMsg
 async function openaiCompatStep(cfg: ProviderCfg, system: string, messages: ChatMsg[], tools: ToolDef[], onText: (t: string) => void, maxTokens: number, signal?: AbortSignal): Promise<LlmStep> {
   const base = OPENAI_BASES[cfg.provider] ?? cfg.extra?.base;
   if (!base) throw new Error(`Provider ${cfg.provider} belum didukung`);
-  type OMsg = { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string };
+  type OMsg = { role: string; content: string | null | unknown[]; tool_calls?: unknown[]; tool_call_id?: string; name?: string };
   const msgs: OMsg[] = [{ role: "system", content: system }];
   for (const m of messages) {
     if (m.role === "assistant_tool_calls") {
       msgs.push({ role: "assistant", content: m.text || null, tool_calls: m.calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.input) } })) });
     } else if (m.role === "tool_results") {
       for (const r of m.results) msgs.push({ role: "tool", tool_call_id: r.id, name: r.name, content: r.output });
+      // pesan tool tidak bisa berisi gambar di API kompatibel OpenAI → kirim sebagai pesan user berisi gambar
+      const imgs = m.results.flatMap((r) => r.images ?? []);
+      if (imgs.length) msgs.push({ role: "user", content: [{ type: "text", text: "Gambar dari hasil tool view_image:" }, ...imgs.map((im) => ({ type: "image_url", image_url: { url: `data:${im.mime};base64,${im.b64}` } }))] });
     } else msgs.push({ role: m.role, content: m.content });
   }
   const body: Record<string, unknown> = { model: cfg.model, messages: msgs, max_tokens: maxTokens, stream: false };

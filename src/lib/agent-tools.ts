@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ToolDef } from "./llm";
 import { extractText } from "./extract";
 import { DOMAIN_TOOL_DEFS, runDomainTool } from "./domain-tools";
-import { BUILTIN_CAP_DEFS, REQUEST_CAPABILITY_DEF, runBuiltinCap, runHttpCap, validateHttpSpec, type HttpSpec } from "./capabilities";
+import { BUILTIN_CAP_DEFS, ALWAYS_ON_CAPS, REQUEST_CAPABILITY_DEF, runBuiltinCap, runHttpCap, validateHttpSpec, type HttpSpec } from "./capabilities";
 
 /**
  * Tool yang bisa dipanggil pegawai AI saat bekerja.
@@ -37,8 +37,36 @@ export const TOOL_DEFS: Record<string, ToolDef> = {
   },
   save_to_drive: {
     name: "save_to_drive",
-    description: "Simpan teks (markdown/txt/html/csv) ke Drive project. Untuk dokumen panjang (ebook, laporan) SIMPAN PER BAGIAN: panggilan pertama mode 'new', bagian berikutnya mode 'append' dengan filename yang sama. Maks ±6.000 kata per panggilan.",
-    input_schema: { type: "object", properties: { filename: { type: "string", description: "Nama file dengan ekstensi, mis. analisis-esp.md" }, content: { type: "string" }, mode: { type: "string", enum: ["new", "append"], default: "new", description: "new = file baru; append = tambahkan ke akhir file bernama sama" } }, required: ["filename", "content"] },
+    description: "Simpan teks (markdown/txt/html/csv) ke Drive project. Mode: 'new' = file baru; 'replace' = TIMPA isi file bernama sama (untuk revisi — tetap satu versi terkini); 'append' = tambahkan ke akhir file. Untuk dokumen panjang simpan per bagian: bagian 1 'new' (atau 'replace' bila merevisi), bagian berikutnya 'append'. Maks ±6.000 kata per panggilan.",
+    input_schema: { type: "object", properties: { filename: { type: "string", description: "Nama file dengan ekstensi, mis. bab-2.md" }, content: { type: "string" }, mode: { type: "string", enum: ["new", "replace", "append"], default: "new", description: "new = file baru; replace = timpa file bernama sama; append = tambahkan ke akhir file bernama sama" } }, required: ["filename", "content"] },
+  },
+  merge_drive_files: {
+    name: "merge_drive_files",
+    description: "Gabungkan beberapa file teks di Drive (md/txt/html/csv) menjadi satu file, berurutan sesuai daftar. Opsional menghapus file sumber setelah digabung (hanya bila user sudah setuju).",
+    input_schema: { type: "object", properties: { sources: { type: "array", items: { type: "string" }, description: "Nama file sumber, berurutan" }, target: { type: "string", description: "Nama file hasil, mis. glosarium-lengkap.md" }, separator: { type: "string", description: "Pemisah antar file, default baris kosong + ---" }, delete_sources: { type: "boolean", description: "Hapus file sumber setelah berhasil digabung (butuh kemampuan Hapus file Drive + persetujuan user)" }, confirmed: { type: "boolean", description: "true hanya bila user sudah menyetujui penghapusan file sumber" } }, required: ["sources", "target"] },
+  },
+  view_image: {
+    name: "view_image",
+    description: "Lihat gambar dari Drive project (png/jpg/webp/gif, maks ±3,5 MB) agar kamu bisa memeriksa isinya: hasil render, ilustrasi, grafik, foto, screenshot. Tanpa argumen: daftar gambar.",
+    input_schema: { type: "object", properties: { name: { type: "string", description: "Nama file gambar (sebagian boleh)" } } },
+  },
+  ask_user: {
+    name: "ask_user",
+    description: "Minta KEPUTUSAN user dengan tombol pilihan yang bisa diklik di chat (2-4 opsi). Pakai bila ada hal yang menunggu persetujuan/keputusan user (todo untuk user, pilihan arah, persetujuan rencana/anggaran, revisi mana yang dipakai). Tulis konsekuensi tiap opsi secara singkat. Setelah memanggil ini, giliranmu selesai — tunggu jawaban user.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: { type: "string", description: "Pertanyaan/keputusan yang diminta, singkat & jelas" },
+        options: { type: "array", minItems: 2, maxItems: 4, items: { type: "object", properties: { label: { type: "string", description: "Teks tombol (≤ 40 karakter)" }, consequence: { type: "string", description: "Dampak/konsekuensi bila opsi ini dipilih (1 kalimat)" } }, required: ["label"] } },
+        allow_other: { type: "boolean", description: "Tampilkan opsi 'Lainnya' agar user bisa mengetik jawaban sendiri (default true)" },
+      },
+      required: ["question", "options"],
+    },
+  },
+  delegate_agent: {
+    name: "delegate_agent",
+    description: "Delegasikan pekerjaan ke pegawai AI lain (mis. Maya, Yusuf, Bayu). Agent tujuan langsung bekerja dengan brief-mu, jawabannya tampil di chat dan dikembalikan kepadamu sebagai hasil tool, lalu kamu bisa melanjutkan (mis. mendelegasikan langkah berikutnya). Tulis brief yang lengkap: tujuan, konteks, file Drive yang dipakai, format & nama file hasil.",
+    input_schema: { type: "object", properties: { agent: { type: "string", description: "Nama agent, mis. maya atau @yusuf" }, brief: { type: "string", description: "Instruksi lengkap untuk agent tujuan" } }, required: ["agent", "brief"] },
   },
   read_drive_file: {
     name: "read_drive_file",
@@ -85,6 +113,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       case "web_search": return await webSearch(String(input.query ?? ""), Number(input.max_results ?? 5), ctx);
       case "web_fetch": return await webFetch(String(input.url ?? ""), ctx);
       case "save_to_drive": return await saveToDrive(String(input.filename ?? "hasil.md"), String(input.content ?? ""), ctx, String(input.mode ?? "new"));
+      case "merge_drive_files": return await mergeDriveFiles(input, ctx);
       case "read_drive_file": return await readDriveFile(input.name ? String(input.name) : "", Number(input.part ?? 1), ctx);
       case "keyword_research": return await keywordResearch(String(input.keyword ?? ""), String(input.country ?? "id"), ctx);
       case "voice_generate": return await voiceGenerate(input, ctx);
@@ -95,7 +124,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       case "request_capability": return await requestCapability(input, ctx);
       default: {
         if (name in BUILTIN_CAP_DEFS) {
-          if (!ctx.enabledCaps?.has(name)) return `Gagal: kemampuan ${name} belum diaktifkan admin. Ajukan dengan request_capability.`;
+          if (!ALWAYS_ON_CAPS.has(name) && !ctx.enabledCaps?.has(name)) return `Gagal: kemampuan ${name} belum diaktifkan admin. Ajukan dengan request_capability.`;
           return (await runBuiltinCap(name, input, ctx)) ?? `Tool ${name} tidak dikenal.`;
         }
         if (ctx.httpCaps?.[name]) return await runHttpCap(ctx.httpCaps[name], input, ctx.keys);
@@ -143,6 +172,17 @@ async function saveToDrive(filename: string, content: string, ctx: ToolCtx, mode
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
   const ext = (safe.split(".").pop() || "md").toLowerCase();
   const mime = ext === "html" ? "text/html" : ext === "csv" ? "text/csv" : ext === "json" ? "application/json" : ext === "txt" ? "text/plain" : "text/markdown";
+  if (mode === "replace" || mode === "new") {
+    const { data: prev } = await ctx.supabase.from("files").select("id,storage_path").eq("project_id", ctx.projectId).eq("title", safe).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (prev && mode === "new") return `Gagal: file "${safe}" sudah ada. Untuk merevisi pakai mode "replace" (menimpa, tetap satu versi), atau pakai nama lain bila memang file berbeda.`;
+    if (prev && mode === "replace") {
+      const bytes = Buffer.from(content, "utf8");
+      const { error: upErr } = await ctx.supabase.storage.from("drive").upload(prev.storage_path, bytes, { contentType: mime, upsert: true });
+      if (upErr) throw new Error(upErr.message);
+      await ctx.supabase.from("files").update({ size_bytes: bytes.length, mime_type: mime }).eq("id", prev.id);
+      return `File "${safe}" ditimpa dengan versi baru (${bytes.length} byte).`;
+    }
+  }
   if (mode === "append") {
     const { data: prev } = await ctx.supabase.from("files").select("id,storage_path,size_bytes").eq("project_id", ctx.projectId).eq("title", safe).order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (prev) {
@@ -318,7 +358,7 @@ async function requestCapability(input: Record<string, unknown>, ctx: ToolCtx): 
   if (capKey && capKey in BUILTIN_CAP_DEFS) kind = "builtin";
   if (kind === "builtin") {
     if (!capKey || !(capKey in BUILTIN_CAP_DEFS)) { kind = "dev"; capKey = null; }
-    else if (ctx.enabledCaps?.has(capKey)) return `Kemampuan ${capKey} sudah aktif — langsung pakai tool ${capKey}.`;
+    else if (ctx.enabledCaps?.has(capKey) || ALWAYS_ON_CAPS.has(capKey)) return `Kemampuan ${capKey} sudah aktif — langsung pakai tool ${capKey}.`;
   }
   if (kind === "http") {
     spec = input.http_spec ?? null;
@@ -343,4 +383,63 @@ async function requestCapability(input: Record<string, unknown>, ctx: ToolCtx): 
   return kind === "dev"
     ? `Permintaan "${title}" dicatat sebagai kebutuhan pengembangan. Admin akan melihatnya di Pengaturan → Kemampuan.`
     : `Permintaan "${title}" diajukan. Admin organisasi bisa menyetujuinya di Pengaturan → Kemampuan; setelah disetujui, kemampuan langsung tersedia di pesan berikutnya.`;
+}
+
+async function mergeDriveFiles(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
+  const names = Array.isArray(input.sources) ? (input.sources as unknown[]).map(String).filter(Boolean) : [];
+  const target = String(input.target ?? "").trim().replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (names.length < 2 || !target) return "Butuh minimal 2 file sumber dan nama file hasil.";
+  const { data: files } = await ctx.supabase.from("files").select("id,title,storage_path,mime_type").eq("project_id", ctx.projectId).order("created_at", { ascending: false }).limit(300);
+  const picked: { id: string; title: string; storage_path: string }[] = [];
+  for (const n of names) {
+    const q = n.toLowerCase();
+    const f = (files ?? []).find((x) => x.title.toLowerCase() === q) ?? (files ?? []).find((x) => x.title.toLowerCase().includes(q));
+    if (!f) return `File "${n}" tidak ditemukan. Tersedia: ${(files ?? []).slice(0, 30).map((x) => x.title).join(", ")}`;
+    if (!/\.(md|txt|html?|csv|json)$/i.test(f.title)) return `File "${f.title}" bukan file teks — hanya md/txt/html/csv/json yang bisa digabung.`;
+    picked.push(f);
+  }
+  const parts: string[] = [];
+  for (const f of picked) {
+    const { data, error } = await ctx.supabase.storage.from("drive").download(f.storage_path);
+    if (error || !data) throw new Error(`gagal membaca ${f.title}: ${error?.message ?? ""}`);
+    parts.push((await data.text()).trim());
+  }
+  const sep = typeof input.separator === "string" ? input.separator : "\n\n---\n\n";
+  const merged = parts.join(sep);
+  const exists = (files ?? []).some((x) => x.title === target);
+  const res = await saveToDrive(target, merged, ctx, exists ? "replace" : "new");
+  let note = "";
+  const saved = /^(Tersimpan|File ".*" ditimpa)/.test(res);
+  if (!saved) return `Gagal menggabungkan: ${res}`;
+  if (input.delete_sources === true && !(ctx.enabledCaps?.has("delete_drive_file") && input.confirmed === true)) {
+    note = " File sumber TIDAK dihapus: butuh kemampuan 'Hapus file Drive' aktif dan konfirmasi user (confirmed=true).";
+  } else if (input.delete_sources === true) {
+    const del = picked.filter((f) => f.title !== target);
+    await ctx.supabase.storage.from("drive").remove(del.map((f) => f.storage_path));
+    await ctx.supabase.from("files").delete().in("id", del.map((f) => f.id));
+    note = ` File sumber dihapus: ${del.map((f) => f.title).join(", ")}.`;
+  }
+  return `${picked.length} file digabung → "${target}" (${merged.length} karakter). ${res}${note}`;
+}
+
+const IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
+
+/** Ambil gambar dari Drive untuk dilihat model. Dipanggil langsung oleh route chat (hasilnya berisi gambar). */
+export async function viewImage(name: string, ctx: ToolCtx): Promise<{ output: string; images?: { mime: string; b64: string }[] }> {
+  const { data: files } = await ctx.supabase.from("files").select("id,title,storage_path,mime_type,size_bytes").eq("project_id", ctx.projectId).order("created_at", { ascending: false }).limit(300);
+  const imgs = (files ?? []).filter((f) => (f.mime_type ?? "").startsWith("image/") || IMAGE_RE.test(f.title));
+  if (!imgs.length) return { output: "Tidak ada gambar di Drive project. Minta user mengunggah gambar lewat Drive atau tombol lampiran di chat." };
+  if (!name) return { output: `Gambar di Drive:\n${imgs.map((f) => `- ${f.title} (${Math.round((f.size_bytes ?? 0) / 1024)} KB)`).join("\n")}` };
+  const q = name.toLowerCase();
+  const f = imgs.find((x) => x.title.toLowerCase() === q) ?? imgs.find((x) => x.title.toLowerCase().includes(q));
+  if (!f) return { output: `Gambar "${name}" tidak ditemukan. Tersedia: ${imgs.map((x) => x.title).join(", ")}` };
+  if ((f.size_bytes ?? 0) > 3_700_000) return { output: `Gagal: "${f.title}" terlalu besar (${Math.round((f.size_bytes ?? 0) / 1024 / 1024)} MB, maks 4 MB). Minta user mengunggah versi yang lebih kecil.` };
+  const { data, error } = await ctx.supabase.storage.from("drive").download(f.storage_path);
+  if (error || !data) return { output: `Gagal mengunduh gambar: ${error?.message ?? "tidak diketahui"}` };
+  const buf = Buffer.from(await data.arrayBuffer());
+  if (buf.length > 3_700_000) return { output: `Gagal: "${f.title}" terlalu besar (${(buf.length / 1024 / 1024).toFixed(1)} MB). Batas untuk dilihat ±3,5 MB — minta user mengunggah versi yang lebih kecil/terkompres.` };
+  const ext = (f.title.split(".").pop() ?? "").toLowerCase();
+  const mime = (f.mime_type && f.mime_type.startsWith("image/") ? f.mime_type : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`).replace("image/jpg", "image/jpeg");
+  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mime)) return { output: `Format ${mime} belum didukung untuk dilihat (pakai png/jpg/webp/gif).` };
+  return { output: `Gambar "${f.title}" (${Math.round(buf.length / 1024)} KB) terlampir di bawah. Periksa dan jelaskan temuanmu.`, images: [{ mime, b64: buf.toString("base64") }] };
 }

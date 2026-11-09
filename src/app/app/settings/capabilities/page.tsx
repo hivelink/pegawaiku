@@ -2,6 +2,7 @@ import { ShieldCheck, Check, X, Wrench, Globe, Code2 } from "lucide-react";
 import { getContext } from "@/lib/context";
 import { Card } from "@/components/ui/card";
 import { reviewCapabilityRequest, toggleCapability, deleteHttpCapability } from "../../actions";
+import { ALWAYS_ON_CAPS } from "@/lib/capabilities";
 
 const RISK: Record<string, string> = { low: "bg-emerald-100 text-emerald-700", medium: "bg-amber-100 text-amber-800", high: "bg-red-100 text-red-700" };
 const STATUS: Record<string, string> = { pending: "Menunggu", approved: "Disetujui", rejected: "Ditolak", needs_dev: "Perlu pengembangan", done: "Selesai" };
@@ -76,7 +77,7 @@ export default async function CapabilitiesPage() {
                 <div className="flex items-center gap-2"><b>{c.name}</b><span className={`rounded-md px-1.5 text-[10px] font-bold uppercase ${RISK[c.risk] ?? ""}`}>{c.risk}</span></div>
                 <p className="text-xs text-muted">{c.description}</p>
               </div>
-              {isAdmin ? (
+              {ALWAYS_ON_CAPS.has(c.key) ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Selalu aktif</span> : isAdmin ? (
                 <form action={toggleCapability}>
                   <input type="hidden" name="key" value={c.key} /><input type="hidden" name="enable" value={on.has(c.key) ? "0" : "1"} />
                   <button className={`rounded-full px-3 py-1 text-xs font-bold ${on.has(c.key) ? "bg-emerald-600 text-white" : "border border-border"}`}>{on.has(c.key) ? "Aktif" : "Nonaktif"}</button>

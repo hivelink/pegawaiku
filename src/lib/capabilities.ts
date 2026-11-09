@@ -18,6 +18,9 @@ export type HttpSpec = {
 
 const CONFIRM_PROP = { confirmed: { type: "boolean", description: "WAJIB true hanya jika user SUDAH menyetujui secara eksplisit di chat untuk aksi ini. Jika belum, tanyakan dulu ke user." } };
 
+/** Kemampuan dasar yang selalu aktif (berisiko rendah) — tidak perlu persetujuan admin. */
+export const ALWAYS_ON_CAPS = new Set(["rename_drive_file", "list_tasks", "update_task"]);
+
 export const BUILTIN_CAP_DEFS: Record<string, ToolDef> = {
   delete_drive_file: {
     name: "delete_drive_file",
@@ -36,8 +39,8 @@ export const BUILTIN_CAP_DEFS: Record<string, ToolDef> = {
   },
   update_task: {
     name: "update_task",
-    description: "Ubah judul, deskripsi, atau status tugas di board. Cari ID lewat list_tasks.",
-    input_schema: { type: "object", properties: { id: { type: "string" }, title: { type: "string" }, description: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "review", "done", "blocked"] } }, required: ["id"] },
+    description: "Ubah judul, deskripsi, atau status tugas di board (mis. tandai 'done' setelah selesai, atau dari 'blocked' ke 'in_progress'). Isi id dari list_tasks, atau 'find' = sebagian judul tugas.",
+    input_schema: { type: "object", properties: { id: { type: "string" }, find: { type: "string", description: "Sebagian judul tugas bila id tidak diketahui" }, title: { type: "string" }, description: { type: "string" }, status: { type: "string", enum: ["todo", "in_progress", "review", "done", "blocked"] } } },
   },
   delete_task: {
     name: "delete_task",
@@ -121,7 +124,15 @@ export async function runBuiltinCap(name: string, input: Record<string, unknown>
       const patch: Record<string, unknown> = {};
       for (const k of ["title", "description", "status"]) if (input[k] != null && input[k] !== "") patch[k] = input[k];
       if (!Object.keys(patch).length) return "Tidak ada perubahan.";
-      const { data, error } = await sb.from("tasks").update(patch).eq("id", String(input.id)).eq("project_id", ctx.projectId).select("title");
+      let taskId = input.id ? String(input.id) : "";
+      if (!taskId && input.find) {
+        const { data: found } = await sb.from("tasks").select("id,title").eq("project_id", ctx.projectId).ilike("title", `%${String(input.find).replace(/[%_]/g, "")}%`).limit(5);
+        if (!found?.length) return `Tidak ada tugas yang judulnya mengandung "${input.find}". Pakai list_tasks.`;
+        if (found.length > 1) return `Ada ${found.length} tugas cocok: ${found.map((t) => `"${t.title}" (id ${t.id})`).join(", ")}. Sebutkan id-nya.`;
+        taskId = found[0].id;
+      }
+      if (!taskId) return "Isi id tugas (lihat list_tasks) atau 'find'.";
+      const { data, error } = await sb.from("tasks").update(patch).eq("id", taskId).eq("project_id", ctx.projectId).select("title");
       if (error) throw new Error(error.message);
       if (!data?.length) return "Tugas tidak ditemukan di project ini.";
       return `Tugas "${data[0].title}" diperbarui.`;

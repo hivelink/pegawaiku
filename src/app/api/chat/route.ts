@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { logEvent, describeError } from "@/lib/log";
 import { createClient } from "@/lib/supabase/server";
 import { creditCost } from "@/lib/utils";
-import { llmStep, splitModelId, sanitizeHistory, type ChatMsg } from "@/lib/llm";
-import { TOOL_DEFS, runTool, type ToolCtx } from "@/lib/agent-tools";
-import { BUILTIN_CAP_DEFS, httpCapToolDef, type HttpSpec } from "@/lib/capabilities";
+import { llmStep, splitModelId, sanitizeHistory, type ChatMsg, type ToolResult } from "@/lib/llm";
+import { findAgent } from "@/lib/mentions";
+import { encodeChoice } from "@/lib/choices";
+import { TOOL_DEFS, runTool, viewImage, type ToolCtx } from "@/lib/agent-tools";
+import { BUILTIN_CAP_DEFS, ALWAYS_ON_CAPS, httpCapToolDef, type HttpSpec } from "@/lib/capabilities";
 import { parseMentions, shortName, type MentionAgent } from "@/lib/mentions";
 
 export const runtime = "nodejs";
@@ -18,6 +20,7 @@ Jangan mengklaim membuat gambar/video; kamu menghasilkan teks dan file teks.
 Untuk dokumen panjang, simpan per bagian (save_to_drive mode "new" lalu "append"), jangan satu panggilan raksasa.
 Jika kamu TIDAK punya tool untuk melakukan permintaan user (mis. menghapus file Drive), JANGAN hanya menolak: panggil request_capability agar admin bisa menyetujui kemampuan itu, lalu jelaskan ke user bahwa permintaan sudah diajukan dan cara alternatif sementara.
 Aksi yang menghapus data (hapus file/tugas) wajib minta konfirmasi user dulu.
+Bila ada keputusan/persetujuan yang menunggu user (pilihan arah, persetujuan rencana atau biaya, versi mana yang dipakai, todo untuk user), JANGAN menulis pilihan sebagai teks biasa — panggil ask_user dengan 2-4 opsi beserta konsekuensinya, lalu berhenti dan tunggu klik user. Satu keputusan per panggilan; tulis konteks singkat sebelum memanggilnya.
 Jika setelah beberapa percobaan informasi tetap tidak ditemukan, BERHENTI memanggil tool dan jelaskan apa yang sudah dicoba, apa yang belum ditemukan, dan data apa yang dibutuhkan dari user.`;
 
 const MAX_STEPS = 14;          // batas langkah tool per pesan
@@ -47,6 +50,10 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
     case "voice_generate": return "🔊 Membuat suara";
     case "landing_publish": return `🚀 Menerbitkan: /p/${input.slug}`;
     case "request_capability": return `🙋 Mengajukan kemampuan: ${input.title}`;
+    case "ask_user": return `🗳 Meminta keputusan: ${String(input.question ?? "").slice(0, 80)}`;
+    case "delegate_agent": return `🤝 Mendelegasikan ke @${String(input.agent ?? "").replace(/^@/, "")}`;
+    case "view_image": return `👁 Melihat gambar: ${input.name ?? "daftar gambar"}`;
+    case "merge_drive_files": return `🧩 Menggabungkan ${Array.isArray(input.sources) ? input.sources.length : ""} file → ${input.target}`;
     case "delete_drive_file": return `🗑 Menghapus file: ${input.name}`;
     case "rename_drive_file": return `✏️ Ganti nama: ${input.name} → ${input.new_name}`;
     case "list_tasks": return "📋 Melihat tugas";
@@ -158,23 +165,26 @@ export async function POST(req: Request) {
 
   const brandCtx = [project.tagline && `Tagline: ${project.tagline}`, project.description && `Deskripsi: ${project.description}`, project.category && `Kategori: ${project.category}`, project.website && `Website: ${project.website}`, Object.keys(project.brand ?? {}).length ? `Brand: ${JSON.stringify(project.brand)}` : ""].filter(Boolean).join("\n");
 
-  async function buildFor(agent: FullAgent) {
+  async function buildFor(agent: FullAgent, depth = 0) {
     const [{ data: skillRows }, { data: knowledge }] = await Promise.all([
       supabase.from("agent_skills").select("skill:skills(key,name,instructions,requires_tools)").eq("org_id", project.org_id).eq("agent_id", agent.id),
       supabase.from("agent_knowledge").select("title,content").eq("org_id", project.org_id).eq("agent_id", agent.id).order("created_at", { ascending: false }).limit(8),
     ]);
     type SkillRow = { skill: { key: string; name: string; instructions: string; requires_tools: string[] } };
     const skills = ((skillRows ?? []) as unknown as SkillRow[]).map((s) => s.skill).filter(Boolean);
+    const teamTxt = pool.filter((a) => hiredIds.has(a.id) || participantIds.has(a.id)).filter((a) => a.id !== agent.id).map((a) => `${a.display_name} (@${shortName(a.display_name)} — ${a.title ?? ""})`).join("; ");
+    const delegateTxt = multiReady && depth === 0 && teamTxt ? `\n=== TIM DI PROJECT INI ===\n${teamTxt}\nKamu bisa menyerahkan pekerjaan ke mereka dengan delegate_agent (agent=nama, brief=instruksi lengkap). Hasilnya kembali kepadamu; periksa, lalu lanjutkan atau delegasikan langkah berikutnya. Jangan mendelegasikan hal yang bisa kamu kerjakan sendiri.` : "";
     const collab = participantIds.size > 1
-      ? `\n=== KOLABORASI ===\nPercakapan ini melibatkan beberapa pegawai AI: ${participantsTxt}. Kamu adalah ${agent.display_name}. Pesan dari agent lain ditandai [Nama]. Kerjakan bagian sesuai peranmu, manfaatkan hasil agent lain bila relevan, jangan menulis atas nama agent lain. Bila bagian tertentu lebih cocok untuk agent lain, sarankan user memanggilnya dengan @nama.`
+      ? `\n=== KOLABORASI ===\nPercakapan ini melibatkan beberapa pegawai AI: ${participantsTxt}. Kamu adalah ${agent.display_name}. Pesan dari agent lain ditandai [Nama]. Kerjakan bagian sesuai peranmu, manfaatkan hasil agent lain bila relevan, jangan menulis atas nama agent lain. Bila bagian tertentu lebih cocok untuk agent lain, delegasikan dengan tool delegate_agent (bila tersedia) atau sarankan user memanggilnya dengan @nama.`
       : "";
     const system = [
       BASE_SYSTEM,
       `\nProject aktif: ${project.name}${brandCtx ? `\n${brandCtx}` : ""}`,
       `\n=== PERAN: ${agent.display_name} ===\n${agent.system_prompt}`,
       collab,
+      delegateTxt,
       skills.length ? `\n=== SKILL TAMBAHAN ===\n${skills.map((s) => `## ${s.name}\n${s.instructions}`).join("\n\n")}` : "",
-      capsReady ? `\n=== KEMAMPUAN YANG BISA DIMINTA (belum aktif) ===\n${Object.values(BUILTIN_CAP_DEFS).filter((d) => !enabledCaps.has(d.name)).map((d) => `- ${d.name}: ${d.description.split(".")[0]}`).join("\n") || "(semua sudah aktif)"}\nJika permintaan user butuh salah satu di atas, panggil request_capability dengan capability_key tersebut.` : "",
+      capsReady ? `\n=== KEMAMPUAN YANG BISA DIMINTA (belum aktif) ===\n${Object.values(BUILTIN_CAP_DEFS).filter((d) => !enabledCaps.has(d.name) && !ALWAYS_ON_CAPS.has(d.name)).map((d) => `- ${d.name}: ${d.description.split(".")[0]}`).join("\n") || "(semua sudah aktif)"}\nJika permintaan user butuh salah satu di atas, panggil request_capability dengan capability_key tersebut.` : "",
       (knowledge ?? []).length ? `\n=== PENGETAHUAN YANG SUDAH KAMU PELAJARI ===\n${(knowledge ?? []).map((k) => `## ${k.title}\n${k.content}`).join("\n\n")}` : "",
     ].join("\n");
     const enabledKeys = new Set([
@@ -184,10 +194,14 @@ export async function POST(req: Request) {
       ...(keys.elevenlabs ? ["voice_generate"] : []),
       ...(agent.requires_tools ?? []),
       ...skills.flatMap((s) => s.requires_tools ?? []),
+      "merge_drive_files", ...ALWAYS_ON_CAPS,
+      ...(["anthropic", "google", "openai"].includes(keyProvider) ? ["view_image"] : []), // model tanpa kemampuan visual menolak gambar
+      ...(depth === 0 ? ["ask_user"] : []), // agent hasil delegasi melapor ke pendelegasi, bukan bertanya ke user
+      ...(multiReady && depth === 0 ? ["delegate_agent"] : []), // agent hasil delegasi tidak mendelegasikan lagi (cegah rantai tak berujung)
       ...(capsReady ? ["request_capability"] : []),
       ...[...enabledCaps].filter((k) => k in BUILTIN_CAP_DEFS),
     ]);
-    const tools = [...Object.values(TOOL_DEFS).filter((t) => enabledKeys.has(t.name) && (!(t.name in BUILTIN_CAP_DEFS) || enabledCaps.has(t.name))), ...httpDefs];
+    const tools = [...Object.values(TOOL_DEFS).filter((t) => enabledKeys.has(t.name) && (!(t.name in BUILTIN_CAP_DEFS) || enabledCaps.has(t.name) || ALWAYS_ON_CAPS.has(t.name))), ...httpDefs];
     // riwayat dari sudut pandang agent ini: balasan agent lain menjadi pesan bertanda [Nama]
     const msgs: ChatMsg[] = sanitizeHistory(history.filter((m) => m.role !== "system").map((m) => {
       if (m.role === "assistant") {
@@ -213,16 +227,45 @@ export async function POST(req: Request) {
       let totalCost = 0, totalIn = 0, totalOut = 0;
       type Reason = "selesai" | "dihentikan" | "batas_waktu" | "batas_langkah" | "looping" | "tool_gagal" | "error";
       let lastReason: Reason = "selesai";
+      let delegations = 0;
+      let awaitingUser = false; // agent memanggil ask_user → agent lain tidak perlu menjawab dulu
+      const MAX_DELEGATIONS = 4;
 
-      for (let ri = 0; ri < responders.length; ri++) {
-        const agent = responders[ri];
-        if (abort.signal.aborted) { lastReason = "dihentikan"; break; }
-        if (Date.now() - t0 > TIME_BUDGET_MS) { lastReason = "batas_waktu"; break; }
-        status({ type: "agent", agent: { id: agent.id, name: agent.display_name, avatar: agent.avatar_url, slug: agent.slug }, index: ri, total: responders.length });
-        const { system, tools, msgs: messages } = await buildFor(agent);
+      /** Satu "gelembung" pesan milik satu agent; disimpan ke DB saat flush (sebelum agent lain bicara). */
+      type Seg = { agent: FullAgent; text: string; inTok: number; outTok: number };
+      function openSeg(agent: FullAgent, extra: Record<string, unknown> = {}): Seg {
+        status({ type: "agent", agent: { id: agent.id, name: agent.display_name, avatar: agent.avatar_url, slug: agent.slug }, ...extra });
+        return { agent, text: "", inTok: 0, outTok: 0 };
+      }
+      async function flushSeg(seg: Seg) {
+        const cost = usesPlatformKey ? creditCost(seg.inTok, seg.outTok) : 0;
+        totalCost += cost; totalIn += seg.inTok; totalOut += seg.outTok;
+        try {
+          let msgId: string | null = null;
+          if (seg.text.trim()) {
+            const row: Record<string, unknown> = { conversation_id: conversationId, role: "assistant", content: seg.text, input_tokens: seg.inTok, output_tokens: seg.outTok, credit_cost: cost };
+            let ins = await supabase.from("messages").insert(multiReady ? { ...row, agent_id: seg.agent.id } : row).select("id").single();
+            if (ins.error && multiReady) ins = await supabase.from("messages").insert(row).select("id").single();
+            msgId = ins.data?.id ?? null;
+            history.push({ role: "assistant", content: seg.text, agent_id: seg.agent.id });
+          }
+          if (cost > 0) await supabase.rpc("apply_credit", { p_org: project.org_id, p_amount: -cost, p_kind: "usage", p_reference: msgId, p_note: `${seg.agent.display_name}: ${seg.inTok}+${seg.outTok} token` });
+        } catch { /* abaikan */ }
+        seg.text = ""; seg.inTok = 0; seg.outTok = 0;
+      }
+
+      /** Jalankan satu giliran agent (dengan tool). depth>0 = dipanggil lewat delegate_agent. Mengembalikan teks jawabannya. */
+      async function runTurn(agent: FullAgent, depth: number, brief?: { from: string; text: string }): Promise<{ text: string; reason: Reason }> {
+        let seg = openSeg(agent, depth ? { delegated: true } : {});
+        const { system, tools, msgs: messages } = await buildFor(agent, depth);
+        if (brief) {
+          const note = `[Delegasi dari ${brief.from}]\n${brief.text}\n\nKerjakan sekarang sesuai peranmu. Akhiri dengan ringkasan singkat hasil & nama file yang kamu simpan (bila ada).`;
+          const last = messages[messages.length - 1];
+          if (last && last.role === "user") last.content += "\n\n" + note; else messages.push({ role: "user", content: note });
+        }
         const ctx: ToolCtx = { supabase, orgId: project.org_id, projectId: project.id, agentId: agent.id, userId: user!.id, conversationId, keys, enabledCaps, httpCaps };
-        let full = "";
-        let inTok = 0, outTok = 0;
+        let answer = "";
+        const add = (t: string) => { seg.text += t; answer += t; emit(t); };
         let stopReason: Reason = "selesai";
         const seen = new Map<string, number>();
         let toolErrors = 0;
@@ -233,40 +276,85 @@ export async function POST(req: Request) {
             if (Date.now() - t0 > TIME_BUDGET_MS) { stopReason = "batas_waktu"; break; }
             status({ type: "thinking", step, max: MAX_STEPS, agent: agent.display_name, label: step === 1 ? `${agent.display_name} memahami permintaan…` : `${agent.display_name} menyusun langkah berikutnya…` });
             const deadline = AbortSignal.any([abort.signal, AbortSignal.timeout(Math.max(5_000, HARD_DEADLINE_MS - (Date.now() - t0)))]);
-            const res = await llmStep({ provider: keyProvider, model, apiKey }, system, messages, tools, (t) => { full += t; emit(t); }, 16000, deadline);
-            inTok += res.usage.input; outTok += res.usage.output;
+            const res = await llmStep({ provider: keyProvider, model, apiKey }, system, messages, tools, add, 16000, deadline);
+            seg.inTok += res.usage.input; seg.outTok += res.usage.output;
             if (!res.toolCalls.length) {
-              if (res.stopReason === "max_tokens") { const n = "\n\n_(Jawaban terpotong karena batas panjang — ketik \"lanjutkan\" untuk meneruskan.)_"; full += n; emit(n); }
+              if (res.stopReason === "max_tokens") add("\n\n_(Jawaban terpotong karena batas panjang — ketik \"lanjutkan\" untuk meneruskan.)_");
               break;
             }
             messages.push({ role: "assistant_tool_calls", calls: res.toolCalls, text: res.text });
-            const results: { id: string; name: string; output: string }[] = [];
+            const results: ToolResult[] = [];
             let loopHit = false;
+            let asked = false;
             for (const call of res.toolCalls) {
               if (abort.signal.aborted) { results.push({ id: call.id, name: call.name, output: "Dihentikan pengguna." }); continue; }
               const label = toolLabel(call.name, call.input);
               status({ type: "tool", step, max: MAX_STEPS, label: `${agent.display_name}: ${label}`, tool: call.name });
-              const line = `\n\n> _${label}_\n\n`;
-              full += line; emit(line);
+              add(`\n\n> _${label}_\n\n`);
               const sig = call.name + ":" + JSON.stringify(call.input);
               const count = (seen.get(sig) ?? 0) + 1; seen.set(sig, count);
               let output: string;
+              let images: ToolResult["images"];
+              const remaining = () => Math.min(TOOL_TIMEOUT_MS, Math.max(5_000, HARD_DEADLINE_MS - (Date.now() - t0)));
               if (count > MAX_SAME_CALL) {
                 loopHit = true;
                 output = "DIHENTIKAN: panggilan ini sudah diulang tanpa hasil baru. Jangan panggil tool lagi; rangkum temuanmu sekarang.";
               } else if (res.stopReason === "max_tokens" && call.name === "save_to_drive") {
-                output = "Gagal: isi terpotong karena terlalu panjang. Simpan ulang PER BAGIAN: bagian 1 mode 'new', bagian berikutnya mode 'append' dengan filename yang sama.";
+                output = "Gagal: isi terpotong karena terlalu panjang. Simpan ulang PER BAGIAN: bagian 1 mode 'new' (atau 'replace'), bagian berikutnya mode 'append' dengan filename yang sama.";
+              } else if (call.name === "ask_user") {
+                const opts = (Array.isArray(call.input.options) ? call.input.options : []).slice(0, 4).map((o) => {
+                  const r = (o ?? {}) as Record<string, unknown>;
+                  return { label: String(r.label ?? "").trim().slice(0, 60), desc: r.consequence ? String(r.consequence).slice(0, 240) : undefined };
+                }).filter((o) => o.label);
+                const q = String(call.input.question ?? "").trim().slice(0, 300);
+                if (depth > 0) output = "Gagal: agent hasil delegasi tidak bertanya langsung ke user — tulis pertanyaannya di laporanmu ke pendelegasi.";
+                else if (!q || opts.length < 2) output = "Gagal: ask_user butuh pertanyaan dan minimal 2 opsi.";
+                else if (asked) output = "Gagal: hanya satu ask_user per giliran.";
+                else {
+                  asked = true;
+                  add(encodeChoice({ id: call.id, q, options: opts, other: call.input.allow_other !== false }));
+                  output = "Tombol pilihan sudah ditampilkan ke user. Giliranmu selesai; tunggu jawabannya.";
+                }
+              } else if (call.name === "view_image") {
+                const r = await withTimeout(viewImage(String(call.input.name ?? ""), ctx), remaining(), { output: "Gagal: gambar tidak bisa diambil dalam batas waktu." });
+                output = r.output; images = r.images;
+              } else if (call.name === "delegate_agent") {
+                const team = pool.filter((a) => hiredIds.has(a.id) || participantIds.has(a.id));
+                const target = findAgent(String(call.input.agent ?? "").replace(/^@/, ""), team);
+                const briefText = String(call.input.brief ?? "").trim();
+                if (depth > 0) output = "Gagal: agent hasil delegasi tidak boleh mendelegasikan lagi.";
+                else if (!target) output = `Gagal: agent "${call.input.agent}" tidak ditemukan. Tim: ${pool.filter((a) => hiredIds.has(a.id) || participantIds.has(a.id)).map((a) => "@" + shortName(a.display_name)).join(", ")}`;
+                else if (target.id === agent.id) output = "Gagal: tidak bisa mendelegasikan ke diri sendiri.";
+                else if (!briefText) output = "Gagal: brief kosong.";
+                else if (delegations >= MAX_DELEGATIONS) output = `Gagal: batas ${MAX_DELEGATIONS} delegasi per pesan tercapai. Rangkum progres dan minta user melanjutkan.`;
+                else if (usesPlatformKey && Number((await supabase.from("organizations").select("credit_balance").eq("id", project.org_id).single()).data?.credit_balance ?? 0) <= 0) output = "Gagal: kredit habis — delegasi dibatalkan. Minta user top up.";
+                else if (Date.now() - t0 > TIME_BUDGET_MS - 45_000) output = "Gagal: waktu kerja hampir habis — tidak cukup untuk delegasi. Rangkum progres; user bisa melanjutkan dengan pesan berikutnya.";
+                else {
+                  delegations++;
+                  // daftarkan sebagai peserta + rekrut ke project bila perlu
+                  if (!participantIds.has(target.id)) { participantIds.add(target.id); await supabase.from("conversation_agents").upsert({ conversation_id: conversationId, agent_id: target.id, added_by: user!.id }, { onConflict: "conversation_id,agent_id" }); }
+                  if (!hiredIds.has(target.id)) { hiredIds.add(target.id); await supabase.from("project_agents").upsert({ project_id: project.id, agent_id: target.id, hired_by: user!.id }, { onConflict: "project_id,agent_id" }); }
+                  const { data: full } = await supabase.from("agents").select(AGENT_COLS).eq("id", target.id).single();
+                  // agent yang sudah dikerjakan lewat delegasi tidak perlu menjawab lagi sebagai responder berikutnya
+                  for (let k = responders.length - 1; k > 0; k--) if (responders[k].id === target.id && k > responders.indexOf(agent)) responders.splice(k, 1);
+                  await flushSeg(seg); // simpan bagian agent ini sebelum agent lain bicara
+                  const sub = await runTurn(full as FullAgent, depth + 1, { from: agent.display_name, text: briefText });
+                  if (abort.signal.aborted) { results.push({ id: call.id, name: call.name, output: "Dihentikan pengguna." }); continue; }
+                  seg = openSeg(agent, { resumed: true }); // kembali ke agent pendelegasi
+                  output = `Hasil dari ${target.display_name} (status: ${sub.reason}):\n${sub.text.length > 8000 ? sub.text.slice(0, 8000) + "\n…[dipotong]" : sub.text || "(tidak ada teks)"}`;
+                }
               } else {
-                output = await withTimeout(runTool(call.name, call.input, ctx), Math.min(TOOL_TIMEOUT_MS, Math.max(5_000, HARD_DEADLINE_MS - (Date.now() - t0))), `Gagal: ${call.name} tidak merespons dalam batas waktu.`);
+                output = await withTimeout(runTool(call.name, call.input, ctx), remaining(), `Gagal: ${call.name} tidak merespons dalam batas waktu.`);
               }
               const failed = /^(Gagal|DIHENTIKAN)/.test(output);
               toolErrors = failed ? toolErrors + 1 : 0;
-              results.push({ id: call.id, name: call.name, output });
-              supabase.from("tool_runs").insert({ conversation_id: conversationId, tool_key: call.name, input: call.input, output_preview: output.slice(0, 300), ok: !failed }).then(() => {}, () => {});
-              if (failed) { const w = `> ⚠️ _${output.slice(0, 160)}_\n\n`; full += w; emit(w); }
+              results.push({ id: call.id, name: call.name, output, images });
+              supabase.from("tool_runs").insert({ conversation_id: conversationId, tool_key: call.name, input: call.name === "delegate_agent" ? { agent: call.input.agent } : call.input, output_preview: output.slice(0, 300), ok: !failed }).then(() => {}, () => {});
+              if (failed) add(`> ⚠️ _${output.slice(0, 160)}_\n\n`);
             }
             messages.push({ role: "tool_results", results });
             if (abort.signal.aborted) { stopReason = "dihentikan"; break; }
+            if (asked) { awaitingUser = true; break; } // menunggu klik user — tidak perlu langkah LLM lagi
             if (loopHit) { stopReason = "looping"; break; }
             if (toolErrors >= MAX_TOOL_ERRORS) { stopReason = "tool_gagal"; break; }
             if (step === MAX_STEPS) stopReason = "batas_langkah";
@@ -275,49 +363,44 @@ export async function POST(req: Request) {
           if (stopReason !== "selesai" && stopReason !== "dihentikan" && !abort.signal.aborted) {
             const why = { batas_waktu: "waktu kerja habis", batas_langkah: "batas jumlah langkah tercapai", looping: "terdeteksi pengulangan tanpa kemajuan", tool_gagal: "beberapa tool gagal berturut-turut" }[stopReason as "batas_waktu"];
             status({ type: "wrapup", step, max: MAX_STEPS, label: `${agent.display_name} merangkum hasil (${why})…` });
-            const note = `\n\n---\n_⏸ ${agent.display_name} dihentikan otomatis: ${why}._\n\n`;
-            full += note; emit(note);
+            add(`\n\n---\n_⏸ ${agent.display_name} dihentikan otomatis: ${why}._\n\n`);
             messages.push({ role: "user", content: `[SISTEM] Pekerjaan dihentikan karena ${why}. Jangan panggil tool. Tulis ringkasan singkat: (1) apa yang sudah berhasil dikerjakan/disimpan, (2) apa yang belum ditemukan atau gagal dan kemungkinan sebabnya, (3) apa yang dibutuhkan dari user untuk melanjutkan.` });
             try {
-              const res = await llmStep({ provider: keyProvider, model, apiKey }, system, messages, [], (t) => { full += t; emit(t); }, 2000, AbortSignal.any([abort.signal, AbortSignal.timeout(Math.max(3_000, HARD_DEADLINE_MS - (Date.now() - t0)))]));
-              inTok += res.usage.input; outTok += res.usage.output;
+              const res = await llmStep({ provider: keyProvider, model, apiKey }, system, messages, [], add, 2000, AbortSignal.any([abort.signal, AbortSignal.timeout(Math.max(3_000, HARD_DEADLINE_MS - (Date.now() - t0)))]));
+              seg.inTok += res.usage.input; seg.outTok += res.usage.output;
             } catch { /* abaikan */ }
           }
         } catch (e) {
           if (abort.signal.aborted) {
             stopReason = "dihentikan";
           } else if ((e as Error)?.name === "TimeoutError" || (e as Error)?.name === "AbortError" || /abort|timeout/i.test((e as Error)?.message ?? "")) {
-            stopReason = "batas_waktu"; // tenggat langkah habis — hasil sejauh ini tetap disimpan
-            const m = "\n\n---\n_⏸ Dihentikan otomatis: waktu kerja habis. Ketik \"lanjutkan\" untuk meneruskan._"; full += m; emit(m);
+            stopReason = "batas_waktu";
+            add("\n\n---\n_⏸ Dihentikan otomatis: waktu kerja habis. Ketik \"lanjutkan\" untuk meneruskan._");
           } else {
             stopReason = "error";
             const { message, detail } = describeError(e);
-            await logEvent("error", "api:chat", message, { ...detail, conversationId, model: org.chat_model, provider: keyProvider, step, agent: agent.display_name }, project.org_id);
-            const m = `\n\n[Gagal: ${message}]`; full += m; emit(m);
+            await logEvent("error", "api:chat", message, { ...detail, conversationId, model: org!.chat_model, provider: keyProvider, step, agent: agent.display_name }, project.org_id);
+            add(`\n\n[Gagal: ${message}]`);
           }
         }
-
-        if (stopReason === "dihentikan") full += "\n\n_⏹ Dihentikan oleh pengguna._";
-        if (stopReason !== "selesai") await logEvent(stopReason === "error" ? "error" : "warn", "api:chat", `agent berhenti: ${stopReason}`, { conversationId, step, ms: Date.now() - t0, agent: agent.display_name }, project.org_id);
-        const cost = usesPlatformKey ? creditCost(inTok, outTok) : 0;
-        totalCost += cost; totalIn += inTok; totalOut += outTok;
-        try {
-          if (full.trim()) {
-            const row: Record<string, unknown> = { conversation_id: conversationId, role: "assistant", content: full, input_tokens: inTok, output_tokens: outTok, credit_cost: cost };
-            let ins = await supabase.from("messages").insert(multiReady ? { ...row, agent_id: agent.id } : row).select("id").single();
-            if (ins.error && multiReady) ins = await supabase.from("messages").insert(row).select("id").single();
-            if (cost > 0) await supabase.rpc("apply_credit", { p_org: project.org_id, p_amount: -cost, p_kind: "usage", p_reference: ins.data?.id ?? null, p_note: `${agent.display_name}: ${inTok}+${outTok} token` });
-            history.push({ role: "assistant", content: full, agent_id: agent.id }); // agent berikutnya melihat jawaban ini
-          }
-        } catch { /* abaikan */ }
-        lastReason = stopReason;
+        if (stopReason === "dihentikan" && seg.text.trim()) seg.text += "\n\n_⏹ Dihentikan oleh pengguna._";
+        if (stopReason !== "selesai") await logEvent(stopReason === "error" ? "error" : "warn", "api:chat", `agent berhenti: ${stopReason}`, { conversationId, step, ms: Date.now() - t0, agent: agent.display_name, depth }, project.org_id);
+        await flushSeg(seg);
         emit(statusFrame({ type: "agent_done", agent: agent.display_name, reason: stopReason }));
-        if (stopReason === "dihentikan" || stopReason === "error") break;
+        return { text: answer, reason: stopReason };
+      }
+
+      for (let ri = 0; ri < responders.length; ri++) {
+        if (abort.signal.aborted) { lastReason = "dihentikan"; break; }
+        if (Date.now() - t0 > TIME_BUDGET_MS) { lastReason = "batas_waktu"; break; }
+        const r = await runTurn(responders[ri], 0);
+        lastReason = r.reason;
+        if (r.reason === "dihentikan" || r.reason === "error" || awaitingUser) break;
       }
 
       try { await supabase.from("conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId); } catch { /* abaikan */ }
       emit(statusFrame({ type: "done", reason: lastReason, elapsed: Math.round((Date.now() - t0) / 1000) }));
-      emit(`\n\u0000${JSON.stringify({ cost: totalCost, inTok: totalIn, outTok: totalOut, model: org.chat_model, reason: lastReason })}`);
+      emit(`\n\u0000${JSON.stringify({ cost: totalCost, inTok: totalIn, outTok: totalOut, model: org!.chat_model, reason: lastReason })}`);
       if (!closed) { try { controller.close(); } catch { /* sudah tertutup */ } }
     },
     cancel() { abort.abort(); },

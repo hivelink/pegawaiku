@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/input";
 import { Markdown } from "@/components/markdown";
 import { feed, type StreamState } from "@/lib/stream-parse";
 import { shortName } from "@/lib/mentions";
+import { splitChoices, decisionText, DECISION_PREFIX } from "@/lib/choices";
+import { ChoiceCard } from "./choice-card";
 
 export type ChatAgent = { id: string; slug: string; display_name: string; title: string; avatar_url: string };
 type Msg = { id: string; role: "user" | "assistant"; content: string; agentId?: string | null };
@@ -90,10 +92,10 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: busy ? "auto" : "smooth", block: "end" }); }, [messages, busy]);
 
-  async function send() {
-    const content = input.trim();
+  async function send(override?: string) {
+    const content = (override ?? input).trim();
     if (!content || busy) return;
-    setInput("");
+    if (override === undefined) setInput("");
     setBusy(true);
     setActivity([]);
     setStatus({ type: "thinking", step: 1, label: "Mengirim…" });
@@ -168,7 +170,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
             Beri brief ke <b>{agentName}</b>. Semakin lengkap konteksnya (produk, audiens, tujuan), semakin baik hasilnya.
           </div>
         )}
-        {messages.map((m) => {
+        {messages.map((m, idx) => {
           const ag = m.role === "assistant" ? agentOf(m.agentId) : null;
           return (
             <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -181,7 +183,17 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
                   </div>
                 )}
                 <div className={`rounded-2xl px-4 py-3 text-sm ${m.role === "user" ? "bg-primary text-white" : "bg-card border border-border"}`}>
-                  {m.role === "user" ? <p className="whitespace-pre-wrap">{m.content}</p> : m.content ? <Markdown text={m.content} /> : <span className="animate-pulse text-muted">{ag?.display_name ?? agentName} sedang mengetik…</span>}
+                  {m.role === "user" ? <p className="whitespace-pre-wrap">{m.content}</p> : m.content ? splitChoices(m.content).map((part, pi) => {
+                    if (part.kind === "text") return part.text.trim() ? <Markdown key={pi} text={part.text} /> : null;
+                    // sudah dijawab bila ada pesan user setelah pesan ini
+                    const next = messages.slice(idx + 1).find((x) => x.role === "user");
+                    const chosen = next?.content.startsWith(DECISION_PREFIX) ? next.content.slice(DECISION_PREFIX.length).split("\n")[0].trim() : null;
+                    return (
+                      <ChoiceCard key={part.choice.id + pi} choice={part.choice} answered={!!next} chosen={chosen} disabled={busy}
+                        onPick={(label) => send(decisionText(part.choice.q, label))}
+                        onOther={() => { setInput(`Untuk "${part.choice.q}": `); taRef.current?.focus(); }} />
+                    );
+                  }) : <span className="animate-pulse text-muted">{ag?.display_name ?? agentName} sedang mengetik…</span>}
                 </div>
               </div>
             </div>
@@ -256,7 +268,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
               placeholder={multiReady ? "Tulis brief… ketik @ untuk memanggil agent lain (Enter kirim, Shift+Enter baris baru)" : "Tulis brief atau pertanyaan… (Enter untuk kirim, Shift+Enter baris baru)"}
             />
           </div>
-          <Button onClick={send} disabled={busy || !input.trim()} aria-label="Kirim"><SendHorizonal size={18} /></Button>
+          <Button onClick={() => send()} disabled={busy || !input.trim()} aria-label="Kirim"><SendHorizonal size={18} /></Button>
         </div>
       </div>
     </>
