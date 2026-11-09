@@ -10,6 +10,7 @@ import { feed, type StreamState } from "@/lib/stream-parse";
 import { shortName } from "@/lib/mentions";
 import { splitChoices, decisionText, DECISION_PREFIX } from "@/lib/choices";
 import { ChoiceCard } from "./choice-card";
+import { createClient } from "@/lib/supabase/client";
 
 export type ChatAgent = { id: string; slug: string; display_name: string; title: string; avatar_url: string };
 type Msg = { id: string; role: "user" | "assistant"; content: string; agentId?: string | null };
@@ -92,6 +93,47 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: busy ? "auto" : "smooth", block: "end" }); }, [messages, busy]);
 
+  // ---- Sinkron antar-perangkat: realtime Supabase + polling cadangan ----
+  const busyRef = useRef(false);
+  useEffect(() => { busyRef.current = busy; }, [busy]);
+  const knownIds = useRef(new Set(agents.map((a) => a.id)));
+  const [remoteWorking, setRemoteWorking] = useState(false);
+  useEffect(() => {
+    const sb = createClient();
+    let stopped = false;
+    let syncing = false;
+    async function resync() {
+      if (stopped || syncing || busyRef.current) return; // saat perangkat ini sedang streaming, jangan timpa
+      syncing = true;
+      try {
+        let rows: { id: string; role: string; content: string; agent_id?: string | null; created_at: string }[] | null = null;
+        const r1 = await sb.from("messages").select("id,role,content,agent_id,created_at").eq("conversation_id", conversationId).order("created_at");
+        if (!r1.error) rows = r1.data;
+        else rows = ((await sb.from("messages").select("id,role,content,created_at").eq("conversation_id", conversationId).order("created_at")).data ?? null) as typeof rows;
+        if (!rows || stopped || busyRef.current) return;
+        const next: Msg[] = rows.filter((m) => m.role !== "system").map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content, agentId: m.role === "assistant" ? (m.agent_id ?? owner.id) : null }));
+        setMessages((cur) => {
+          const same = cur.length === next.length && cur.every((x, i) => x.id === next[i].id && x.content === next[i].content);
+          return same ? cur : next;
+        });
+        // pesan terakhir dari user & belum ada balasan → agent mungkin sedang bekerja di perangkat lain
+        const last = rows[rows.length - 1];
+        setRemoteWorking(!!last && last.role === "user" && Date.now() - new Date(last.created_at).getTime() < 5 * 60_000);
+        // agent baru muncul (mis. hasil delegasi/mention dari perangkat lain) → segarkan header peserta
+        const fresh = rows.some((m) => m.agent_id && !knownIds.current.has(m.agent_id));
+        if (fresh) { rows.forEach((m) => m.agent_id && knownIds.current.add(m.agent_id)); router.refresh(); }
+      } finally { syncing = false; }
+    }
+    const ch = sb.channel(`chat-${conversationId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` }, () => { resync(); })
+      .subscribe();
+    const poll = setInterval(() => { if (document.visibilityState === "visible") resync(); }, 8000);
+    const onFocus = () => resync();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { stopped = true; clearInterval(poll); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); sb.removeChannel(ch); };
+  }, [conversationId, owner.id, router]);
+
   async function send(override?: string) {
     const content = (override ?? input).trim();
     if (!content || busy) return;
@@ -159,6 +201,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
       setStatus(null);
       abortRef.current = null;
       if (multiReady) router.refresh(); // perbarui daftar peserta di header (agent yang baru di-mention)
+      setTimeout(() => window.dispatchEvent(new Event("focus")), 300); // sinkronkan ID pesan dengan database
     }
   }
 
@@ -223,6 +266,11 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
               </ul>
             )}
             {Math.floor((Date.now() - startRef.current) / 1000) > 90 && <div className="mt-2 text-[11px] text-amber-700">Tugas ini cukup lama. Jika agent tampak berputar-putar, tekan <b>Stop</b> — hasil yang sudah ada tetap tersimpan.</div>}
+          </div>
+        )}
+        {!busy && remoteWorking && (
+          <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+            <Loader2 size={13} className="animate-spin" /> Agent sedang mengerjakan pesan dari perangkat lain — jawabannya akan muncul otomatis di sini.
           </div>
         )}
         {lastCost && <div className="mb-1 text-right text-xs text-muted">Biaya pesan terakhir: {lastCost} kredit</div>}
