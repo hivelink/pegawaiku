@@ -1,52 +1,47 @@
+import Link from "next/link";
+import { HardDrive, FolderOpen } from "lucide-react";
 import { getContext } from "@/lib/context";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { deleteFile } from "../actions";
 import { UploadForm } from "./upload-form";
-import { FileIcon, Image as ImageIcon, Video, FileText, Trash2 } from "lucide-react";
+import { FileGrid, signFiles } from "./file-grid";
 
-const icons = { image: ImageIcon, video: Video, text: FileText, file: FileIcon } as const;
-
+/** Drive global: semua file dari semua project di organisasi, dikelompokkan per project. */
 export default async function DrivePage() {
-  const { supabase, project } = await getContext();
-  if (!project) return <p className="text-muted">Buat project dulu di sidebar.</p>;
-  const { data: files } = await supabase.from("files").select("*").eq("project_id", project.id).order("created_at", { ascending: false });
-  const withUrls = await Promise.all((files ?? []).map(async (f) => {
-    const { data } = await supabase.storage.from("drive").createSignedUrl(f.storage_path, 3600);
-    return { ...f, url: data?.signedUrl ?? "#" };
-  }));
+  const { supabase, project, projects } = await getContext();
+  if (!projects.length) return <Card className="p-8 text-sm text-muted">Belum ada project. Buat project di menu Project.</Card>;
+  const { data } = await supabase.from("files").select("id,title,kind,size_bytes,storage_path,project_id").in("project_id", projects.map((p) => p.id)).order("created_at", { ascending: false }).limit(500);
+  const rows = data ?? [];
+  const signed = await signFiles(supabase, rows);
+  const byProject = new Map<string, typeof signed>();
+  rows.forEach((r, i) => { const list = byProject.get(r.project_id) ?? []; list.push(signed[i]); byProject.set(r.project_id, list); });
+  // project aktif di atas, lalu project lain yang punya file
+  const ordered = [...projects].sort((a, b) => (a.id === project?.id ? -1 : b.id === project?.id ? 1 : 0));
 
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-extrabold text-primary">Drive · {project.name}</h1>
-        <UploadForm projectId={project.id} />
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-extrabold text-primary"><HardDrive /> Drive</h1>
+          <p className="text-sm text-muted">Semua file dari {projects.length} project, dikelompokkan per project ({rows.length} file).</p>
+        </div>
+        {project && <div className="flex items-center gap-2 text-xs text-muted">Unggah ke <b className="text-foreground">{project.name}</b> <UploadForm projectId={project.id} /></div>}
       </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {withUrls.map((f) => {
-          const Icon = icons[f.kind as keyof typeof icons] ?? FileIcon;
-          return (
-            <Card key={f.id} className="overflow-hidden">
-              <a href={f.url} target="_blank" rel="noopener" className="block">
-                {f.kind === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={f.url} alt={f.title} className="h-36 w-full object-cover" />
-                ) : (
-                  <div className="flex h-36 items-center justify-center bg-slate-50"><Icon className="text-primary" size={36} /></div>
-                )}
-              </a>
-              <div className="flex items-center justify-between gap-2 p-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold" title={f.title}>{f.title}</div>
-                  <div className="text-xs text-muted">{((f.size_bytes ?? 0) / 1024).toFixed(0)} KB</div>
-                </div>
-                <form action={deleteFile}><input type="hidden" name="id" value={f.id} /><Button variant="ghost" size="sm" aria-label="Hapus"><Trash2 size={14} /></Button></form>
-              </div>
-            </Card>
-          );
-        })}
-        {withUrls.length === 0 && <p className="text-sm text-muted">Belum ada file. Unggah gambar, video, atau dokumen untuk project ini.</p>}
-      </div>
+      {ordered.map((p) => {
+        const files = byProject.get(p.id) ?? [];
+        if (!files.length && p.id !== project?.id) return null;
+        return (
+          <section key={p.id} className="space-y-3">
+            <div className="flex items-center gap-2 border-b border-border pb-2">
+              <FolderOpen size={18} className={p.id === project?.id ? "text-accent" : "text-slate-400"} />
+              <h2 className="font-bold">{p.name}</h2>
+              {p.id === project?.id && <span className="rounded-full bg-sky-100 px-2 text-[11px] font-semibold text-primary">aktif</span>}
+              <span className="text-xs text-muted">{files.length} file</span>
+              {p.id === project?.id && <Link href="/app/project/drive" className="ml-auto text-xs font-semibold text-primary">Buka Drive project →</Link>}
+            </div>
+            <FileGrid files={files} empty="Belum ada file di project ini." />
+          </section>
+        );
+      })}
     </div>
   );
 }

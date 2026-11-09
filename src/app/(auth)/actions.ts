@@ -13,7 +13,8 @@ export async function signIn(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) redirect(`/login?error=${encodeURIComponent(error.message)}`);
-  redirect(String(formData.get("next") || "/app"));
+  const next = String(formData.get("next") || "/app");
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/app"); // cegah open redirect ke situs luar
 }
 
 export async function signUp(formData: FormData) {

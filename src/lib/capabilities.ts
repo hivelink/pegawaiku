@@ -46,8 +46,8 @@ export const BUILTIN_CAP_DEFS: Record<string, ToolDef> = {
   },
   update_project_info: {
     name: "update_project_info",
-    description: "Perbarui info project: tagline, deskripsi, kategori, website, status (active/paused/done), tenggat (YYYY-MM-DD).",
-    input_schema: { type: "object", properties: { tagline: { type: "string" }, description: { type: "string" }, category: { type: "string" }, website: { type: "string" }, status: { type: "string" }, due_date: { type: "string" } } },
+    description: "Perbarui info project: tagline, deskripsi, kategori, website, status, tenggat (YYYY-MM-DD).",
+    input_schema: { type: "object", properties: { tagline: { type: "string" }, description: { type: "string" }, category: { type: "string" }, website: { type: "string" }, status: { type: "string", enum: ["active", "on_hold", "done", "archived"] }, due_date: { type: "string", description: "YYYY-MM-DD" } } },
   },
   list_conversations: {
     name: "list_conversations",

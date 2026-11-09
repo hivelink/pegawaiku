@@ -1,31 +1,55 @@
-import Image from "next/image";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/context";
-import { ChatPanel } from "./chat-panel";
+import { ChatPanel, type ChatAgent } from "./chat-panel";
+import { Participants } from "./participants";
+
+type Row = { id: string; role: "user" | "assistant"; content: string; agent_id?: string | null };
 
 export default async function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase } = await getContext();
   const { data: conv } = await supabase
     .from("conversations")
-    .select("id,title,project_id,agent:agents(slug,display_name,title,avatar_url)")
+    .select("id,title,project_id,agent_id,agent:agents(id,slug,display_name,title,avatar_url)")
     .eq("id", id)
     .single();
   if (!conv) notFound();
-  const agent = conv.agent as unknown as { slug: string; display_name: string; title: string; avatar_url: string };
-  const { data: messages } = await supabase.from("messages").select("id,role,content,credit_cost").eq("conversation_id", id).order("created_at");
+  const owner = conv.agent as unknown as ChatAgent | null;
+  if (!owner) return <div className="rounded-2xl border border-border bg-card p-8 text-sm text-muted">Agent pemilik percakapan ini sudah tidak aktif.</div>;
+
+  // pesan (dengan agent_id bila migrasi 0011 sudah jalan)
+  let rows: Row[] = [];
+  const r1 = await supabase.from("messages").select("id,role,content,agent_id").eq("conversation_id", id).order("created_at");
+  if (!r1.error) rows = (r1.data ?? []) as Row[];
+  else rows = ((await supabase.from("messages").select("id,role,content").eq("conversation_id", id).order("created_at")).data ?? []) as Row[];
+
+  const [partRes, { data: hired }] = await Promise.all([
+    supabase.from("conversation_agents").select("agent:agents(id,slug,display_name,title,avatar_url)").eq("conversation_id", id).order("added_at"),
+    supabase.from("project_agents").select("agent:agents(id,slug,display_name,title,avatar_url)").eq("project_id", conv.project_id),
+  ]);
+  const multiReady = !partRes.error;
+  const participants: ChatAgent[] = [owner];
+  for (const p of (partRes.data ?? []) as unknown as { agent: ChatAgent | null }[]) if (p.agent && !participants.some((x) => x.id === p.agent!.id)) participants.push(p.agent);
+  const hiredList = ((hired ?? []) as unknown as { agent: ChatAgent | null }[]).map((h) => h.agent).filter(Boolean) as ChatAgent[];
+  // agent yang pernah menjawab tapi sudah dikeluarkan tetap bisa ditampilkan nama/avatarnya di riwayat
+  const answered = new Set(rows.map((m) => m.agent_id).filter(Boolean) as string[]);
+  const missing = [...answered].filter((aid) => !participants.some((p) => p.id === aid) && !hiredList.some((h) => h.id === aid));
+  const { data: extra } = missing.length ? await supabase.from("agents").select("id,slug,display_name,title,avatar_url").in("id", missing) : { data: [] };
+  const mentionable = [...participants, ...hiredList.filter((h) => !participants.some((p) => p.id === h.id))];
+  const display = [...mentionable, ...((extra ?? []) as ChatAgent[])];
 
   return (
     <div className="flex h-[calc(100vh-6rem)] flex-col">
-      <div className="flex items-center gap-3 border-b border-border pb-3">
-        <Link href={`/app/agent/${agent.slug}`}><Image src={agent.avatar_url} alt="" width={40} height={40} className="rounded-full" /></Link>
-        <div>
-          <div className="font-bold">{agent.display_name} <span className="font-normal text-muted">· {agent.title}</span></div>
-          <div className="text-xs text-muted">{conv.title}</div>
-        </div>
-      </div>
-      <ChatPanel conversationId={id} projectId={conv.project_id} agentName={agent.display_name} initial={(messages ?? []).filter((m) => m.role !== "system") as { id: string; role: "user" | "assistant"; content: string }[]} />
+      <Participants conversationId={id} title={conv.title ?? ""} owner={owner} participants={participants} candidates={hiredList.filter((h) => !participants.some((p) => p.id === h.id))} multiReady={multiReady} />
+      <ChatPanel
+        conversationId={id}
+        projectId={conv.project_id}
+        owner={owner}
+        agents={mentionable}
+        known={display}
+        multiReady={multiReady}
+        initial={rows.filter((m) => m.role !== ("system" as string)).map((m) => ({ id: m.id, role: m.role, content: m.content, agentId: m.role === "assistant" ? (m.agent_id ?? owner.id) : null }))}
+      />
     </div>
   );
 }

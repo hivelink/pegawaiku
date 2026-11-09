@@ -36,8 +36,8 @@ export function Updater({ supabaseRef }: { supabaseRef: string }) {
 
 // ---------------- Token & koneksi ----------------
 function Setup({ secrets, onSaved, supabaseRef }: { secrets: Secrets | null; onSaved: () => void; supabaseRef: string }) {
-  const [open, setOpen] = useState(false);
-  useEffect(() => { if (secrets && !secrets.github_token?.set) setOpen(true); }, [secrets]);
+  const [manual, setOpen] = useState<boolean | null>(null);
+  const open = manual ?? (!!secrets && !secrets.github_token?.set); // otomatis terbuka bila token GitHub belum ada
   const items: { key: string; label: string; secret: boolean; help: React.ReactNode; placeholder: string }[] = [
     { key: "github_token", label: "Token GitHub", secret: true, placeholder: "github_pat_…", help: <>Buat di <a className="text-primary underline" target="_blank" rel="noreferrer" href="https://github.com/settings/personal-access-tokens/new">GitHub → Fine-grained token</a>: Repository access = hanya repo aplikasi; Permissions → <b>Contents: Read and write</b>, <b>Commit statuses: Read</b>.</> },
     { key: "supabase_access_token", label: "Supabase access token", secret: true, placeholder: "sbp_…", help: <>Untuk menjalankan migrasi dengan 1 klik. Buat di <a className="text-primary underline" target="_blank" rel="noreferrer" href="https://supabase.com/dashboard/account/tokens">Supabase → Account → Access Tokens</a>. Opsional — tanpa ini kamu tetap bisa menyalin SQL.</> },

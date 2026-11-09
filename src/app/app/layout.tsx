@@ -1,24 +1,14 @@
 import Link from "next/link";
-import { Home, Users, HardDrive, KanbanSquare, CreditCard, LogOut, Plus, FolderOpen, Settings } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { getContext } from "@/lib/context";
 import { formatCredit } from "@/lib/utils";
 import { signOut } from "@/app/(auth)/actions";
-import { switchProject, createProject, switchOrg } from "./actions";
-import { Input } from "@/components/ui/input";
+import { switchOrg } from "./actions";
 import { Button } from "@/components/ui/button";
-import { ProjectList } from "./project-list";
+import { SidebarNav, MOBILE_NAV } from "./sidebar-nav";
 import { Breadcrumb } from "./breadcrumb";
 
-const NAV = [
-  { href: "/app", label: "Home", icon: Home },
-  { href: "/app/project", label: "Project", icon: FolderOpen },
-  { href: "/app/agent", label: "Agent", icon: Users },
-  { href: "/app/tasks", label: "Task", icon: KanbanSquare },
-  { href: "/app/drive", label: "Drive", icon: HardDrive },
-  { href: "/app/billing", label: "Billing", icon: CreditCard },
-  { href: "/app/settings/model", label: "Pengaturan", icon: Settings },
-];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { supabase, user, org, orgs, project, projects } = await getContext();
@@ -30,13 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-card p-4 md:flex">
         <Logo href="/app" />
 
-        <nav className="mt-6 space-y-1">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium hover:bg-slate-100">
-              <Icon size={18} className="text-primary" /> {label}
-            </Link>
-          ))}
-        </nav>
+        <SidebarNav projectName={project?.name ?? null} />
 
         <div className="mt-6">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Organisasi</div>
@@ -50,15 +34,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           ) : (
             <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">{org?.name ?? "—"}</div>
           )}
-        </div>
-
-        <div className="mt-4">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Project</div>
-          <ProjectList projects={projects.map((p) => ({ id: p.id, name: p.name }))} activeId={project?.id ?? null} />
-          <form action={createProject} className="mt-2 flex gap-1">
-            <Input name="name" placeholder="Project baru" className="h-8 text-xs" required />
-            <Button type="submit" size="sm" variant="outline" aria-label="Tambah project"><Plus size={14} /></Button>
-          </form>
         </div>
 
         <div className="mt-auto rounded-2xl border border-border bg-slate-50 p-4">
@@ -75,8 +50,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex-1">
         <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3 md:hidden">
           <Logo href="/app" size={28} />
-          <nav className="flex gap-3 text-sm">
-            {NAV.map((n) => <Link key={n.href} href={n.href}>{n.label}</Link>)}
+          <nav className="flex gap-3 overflow-x-auto whitespace-nowrap text-sm">
+            {MOBILE_NAV.map((n) => <Link key={n.href} href={n.href}>{n.label}</Link>)}
           </nav>
         </header>
         <Breadcrumb projectName={project?.name ?? null} email={user.email ?? ""} pendingCaps={pendingCaps ?? 0} />

@@ -7,13 +7,13 @@ export function Markdown({ text }: { text: string }) {
   return <div className="prose-chat" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-function esc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function esc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 function inline(s: string) {
   return esc(s)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<i>$2</i>")
-    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a class="underline" target="_blank" rel="noopener" href="$2">$1</a>');
+    .replace(/\[([^\]]+)\]\((https?:[^)\s"']+)\)/g, '<a class="underline" target="_blank" rel="noopener" href="$2">$1</a>');
 }
 
 function render(md: string) {
@@ -30,7 +30,9 @@ function render(md: string) {
     if (/^\|.*\|\s*$/.test(l)) {
       const rows: string[] = [];
       while (i < lines.length && /^\|.*\|\s*$/.test(lines[i])) rows.push(lines[i++]);
-      const cells = rows.filter((r) => !/^\|\s*:?-+/.test(r)).map((r) => r.slice(1, -1).split("|").map((c) => c.trim()));
+      // baris pemisah = hanya berisi | : - dan spasi (bukan sel data yang kebetulan diawali "-")
+      const cells = rows.filter((r) => !/^[\s|:-]+$/.test(r) || !/-/.test(r)).map((r) => r.trim().slice(1, -1).split("|").map((c) => c.trim()));
+      if (!cells.length) { out.push(`<p>${rows.map(inline).join("<br/>")}</p>`); continue; }
       const [head, ...body] = cells;
       out.push(`<table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${body.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
       continue;
@@ -48,7 +50,8 @@ function render(md: string) {
       out.push(`<ol class="list-decimal pl-5">${items.map((x) => `<li>${inline(x)}</li>`).join("")}</ol>`); continue;
     }
     if (l.trim() === "") { i++; continue; }
-    const para: string[] = [];
+    // baris pertama selalu dikonsumsi — mencegah loop tak berujung pada baris seperti "| a | b" (tabel terpotong saat streaming)
+    const para: string[] = [lines[i++]];
     while (i < lines.length && lines[i].trim() !== "" && !/^(#{1,4}\s|```|\||\s*[-*]\s|\s*\d+\.\s)/.test(lines[i])) para.push(lines[i++]);
     out.push(`<p>${inline(para.join("\n")).replace(/\n/g, "<br/>")}</p>`);
   }

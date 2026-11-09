@@ -13,21 +13,27 @@ export function Breadcrumb({ projectName, email, agentName, pendingCaps = 0 }: {
   const segs = path.split("/").filter(Boolean); // ["app","project","settings"]
   const crumbs: { label: string; href: string }[] = [{ label: "home", href: "/app" }];
 
-  if (segs[1] === "project") {
-    crumbs.push({ label: "project", href: "/app/project" });
+  if (segs[1] === "projects") {
+    crumbs.push({ label: "project", href: "/app/projects" });
+  } else if (segs[1] === "project") {
+    crumbs.push({ label: "project", href: "/app/projects" });
     if (projectName) crumbs.push({ label: projectName, href: "/app/project" });
     if (segs[2]) crumbs.push({ label: LABEL[segs[2]] ?? segs[2], href: path });
   } else if (segs[1] === "agent") {
     crumbs.push({ label: "agent", href: "/app/agent" });
     if (segs[2]) crumbs.push({ label: agentName ?? segs[2].split("-")[0], href: path });
   } else if (segs[1] === "chat") {
+    crumbs.push({ label: "project", href: "/app/projects" });
     if (projectName) crumbs.push({ label: projectName, href: "/app/project" });
     crumbs.push({ label: "chat", href: path });
+  } else if (segs[1] === "tasks") {
+    crumbs.push({ label: "project", href: "/app/projects" });
+    if (projectName) crumbs.push({ label: projectName, href: "/app/project" });
+    crumbs.push({ label: "task", href: path });
   } else if (segs[1] === "settings") {
     crumbs.push({ label: "setting", href: "/app/settings/model" });
     if (segs[2]) crumbs.push({ label: LABEL[segs[2]] ?? segs[2], href: path });
   } else if (segs[1]) {
-    if (projectName && ["tasks", "drive"].includes(segs[1])) crumbs.push({ label: projectName, href: "/app/project" });
     crumbs.push({ label: LABEL[segs[1]] ?? segs[1], href: path });
   }
 

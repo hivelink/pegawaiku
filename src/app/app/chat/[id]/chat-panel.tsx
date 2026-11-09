@@ -1,16 +1,48 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { SendHorizonal, Paperclip, Loader2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { Markdown } from "@/components/markdown";
 import { feed, type StreamState } from "@/lib/stream-parse";
+import { shortName } from "@/lib/mentions";
 
-type Msg = { id: string; role: "user" | "assistant"; content: string };
+export type ChatAgent = { id: string; slug: string; display_name: string; title: string; avatar_url: string };
+type Msg = { id: string; role: "user" | "assistant"; content: string; agentId?: string | null };
 
-export function ChatPanel({ conversationId, agentName, initial, projectId }: { conversationId: string; agentName: string; initial: Msg[]; projectId: string }) {
+export function ChatPanel({ conversationId, owner, agents, known, multiReady, initial, projectId }: { conversationId: string; owner: ChatAgent; agents: ChatAgent[]; known?: ChatAgent[]; multiReady: boolean; initial: Msg[]; projectId: string }) {
+  const router = useRouter();
+  const agentName = owner.display_name;
+  const byId = (id?: string | null) => (known ?? agents).find((a) => a.id === id) ?? owner;
   const [messages, setMessages] = useState<Msg[]>(initial);
+  const [extraAgents, setExtraAgents] = useState<ChatAgent[]>([]); // agent yang baru bergabung saat streaming
+  const agentOf = (id?: string | null) => extraAgents.find((a) => a.id === id) ?? byId(id);
+  const showNames = multiReady && (agents.length > 1 || messages.some((m) => m.agentId && m.agentId !== owner.id));
+  // autocomplete @mention
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const [mention, setMention] = useState<{ q: string; start: number } | null>(null);
+  const [mi, setMi] = useState(0);
+  const suggestions = mention ? agents.filter((a) => {
+    const q = mention.q.toLowerCase();
+    return shortName(a.display_name).startsWith(q) || a.display_name.toLowerCase().includes(q) || a.slug.startsWith(q);
+  }).slice(0, 6) : [];
+  function onInput(v: string, caret: number) {
+    setInput(v);
+    if (!multiReady) return;
+    const before = v.slice(0, caret);
+    const m = /(^|[\s(])@([\w-]{0,30})$/.exec(before);
+    if (m) { setMention({ q: m[2], start: caret - m[2].length - 1 }); setMi(0); } else setMention(null);
+  }
+  function pick(a: ChatAgent) {
+    if (!mention) return;
+    const name = shortName(a.display_name);
+    const caret = taRef.current?.selectionStart ?? input.length;
+    const next = input.slice(0, mention.start) + "@" + name + " " + input.slice(caret);
+    setInput(next); setMention(null);
+    requestAnimationFrame(() => { const pos = mention.start + name.length + 2; taRef.current?.focus(); taRef.current?.setSelectionRange(pos, pos); });
+  }
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastCost, setLastCost] = useState<string | null>(null);
@@ -56,7 +88,7 @@ export function ChatPanel({ conversationId, agentName, initial, projectId }: { c
     }
   }
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: busy ? "auto" : "smooth", block: "end" }); }, [messages, busy]);
 
   async function send() {
     const content = input.trim();
@@ -68,7 +100,7 @@ export function ChatPanel({ conversationId, agentName, initial, projectId }: { c
     startRef.current = Date.now();
     const ac = new AbortController();
     abortRef.current = ac;
-    setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", content }, { id: "pending", role: "assistant", content: "" }]);
+    setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", content }, { id: "pending", role: "assistant", content: "", agentId: owner.id }]);
     try {
       const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId, content }), signal: ac.signal });
       if (!res.ok || !res.body) {
@@ -79,15 +111,43 @@ export function ChatPanel({ conversationId, agentName, initial, projectId }: { c
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       const st: StreamState = { text: "", buf: "" };
+      let offset = 0;      // awal teks milik agent yang sedang menjawab
+      let started = false; // sudah menerima frame "agent" pertama
+      let lastPaint = 0;
+      const paint = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastPaint < 60) return; // batasi render saat streaming
+        lastPaint = now;
+        const shown = st.text.slice(offset).replace(/\n+$/, "");
+        setMessages((m) => m.map((x) => (x.id === "pending" ? { ...x, content: shown } : x)));
+      };
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         feed(st, dec.decode(value, { stream: true }),
-          (ev) => { setStatus(ev as Status); if (ev.type === "tool" && ev.label) setActivity((a) => [...a.slice(-5), String(ev.label)]); },
+          (ev) => {
+            if (ev.type === "agent") {
+              const ag = ev.agent as { id: string; name: string; avatar: string; slug: string };
+              if (!agents.some((a) => a.id === ag.id)) setExtraAgents((xs) => xs.some((x) => x.id === ag.id) ? xs : [...xs, { id: ag.id, slug: ag.slug, display_name: ag.name, title: "", avatar_url: ag.avatar }]);
+              if (started) {
+                // tutup gelembung agent sebelumnya, buka gelembung baru
+                const prevText = st.text.slice(offset).replace(/\n+$/, "");
+                offset = st.text.length;
+                setMessages((m) => [...m.map((x) => (x.id === "pending" ? { ...x, id: crypto.randomUUID(), content: prevText } : x)), { id: "pending", role: "assistant", content: "", agentId: ag.id }]);
+              } else {
+                offset = st.text.length;
+                setMessages((m) => m.map((x) => (x.id === "pending" ? { ...x, agentId: ag.id } : x)));
+              }
+              started = true;
+              setActivity([]);
+              return;
+            }
+            setStatus(ev as Status); if (ev.type === "tool" && ev.label) setActivity((a) => [...a.slice(-5), String(ev.label)]);
+          },
           (sum) => setLastCost(Number(sum.cost ?? 0).toFixed(4)));
-        const shown = st.text.replace(/\n+$/, "");
-        setMessages((m) => m.map((x) => (x.id === "pending" ? { ...x, content: shown } : x)));
+        paint();
       }
+      paint(true);
     } catch (e) {
       const aborted = (e as Error)?.name === "AbortError";
       setMessages((m) => m.map((x) => (x.id === "pending" ? { ...x, content: (x.content || "") + (aborted ? "\n\n_⏹ Dihentikan oleh pengguna._" : `\n\n⚠️ Koneksi terputus: ${(e as Error).message}`) } : x)));
@@ -96,6 +156,7 @@ export function ChatPanel({ conversationId, agentName, initial, projectId }: { c
       setBusy(false);
       setStatus(null);
       abortRef.current = null;
+      if (multiReady) router.refresh(); // perbarui daftar peserta di header (agent yang baru di-mention)
     }
   }
 
@@ -107,13 +168,25 @@ export function ChatPanel({ conversationId, agentName, initial, projectId }: { c
             Beri brief ke <b>{agentName}</b>. Semakin lengkap konteksnya (produk, audiens, tujuan), semakin baik hasilnya.
           </div>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${m.role === "user" ? "bg-primary text-white" : "bg-card border border-border"}`}>
-              {m.role === "user" ? <p className="whitespace-pre-wrap">{m.content}</p> : m.content ? <Markdown text={m.content} /> : <span className="animate-pulse text-muted">{agentName} sedang mengetik…</span>}
+        {messages.map((m) => {
+          const ag = m.role === "assistant" ? agentOf(m.agentId) : null;
+          return (
+            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className="max-w-[85%]">
+                {ag && showNames && (
+                  <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={ag.avatar_url} alt="" width={20} height={20} className="rounded-full" />
+                    {ag.display_name}
+                  </div>
+                )}
+                <div className={`rounded-2xl px-4 py-3 text-sm ${m.role === "user" ? "bg-primary text-white" : "bg-card border border-border"}`}>
+                  {m.role === "user" ? <p className="whitespace-pre-wrap">{m.content}</p> : m.content ? <Markdown text={m.content} /> : <span className="animate-pulse text-muted">{ag?.display_name ?? agentName} sedang mengetik…</span>}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
       <div className="border-t border-border pt-3">
@@ -152,13 +225,37 @@ export function ChatPanel({ conversationId, agentName, initial, projectId }: { c
           <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={busy || (!!upload && upload.status === "Mengunggah")} aria-label="Lampirkan bahan" title="Lampirkan bahan (PDF, PPT, Word, Excel)">
             {upload && upload.status === "Mengunggah" ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
           </Button>
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            rows={2}
-            placeholder="Tulis brief atau pertanyaan… (Enter untuk kirim, Shift+Enter baris baru)"
-          />
+          <div className="relative flex-1">
+            {mention && suggestions.length > 0 && (
+              <div className="absolute bottom-full left-0 z-20 mb-1 w-72 overflow-hidden rounded-xl border border-border bg-white py-1 shadow-lg">
+                <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Panggil agent</div>
+                {suggestions.map((a, i) => (
+                  <button key={a.id} type="button" onMouseDown={(e) => { e.preventDefault(); pick(a); }} className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${i === mi ? "bg-sky-50" : "hover:bg-slate-50"}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={a.avatar_url} alt="" width={22} height={22} className="rounded-full" />
+                    <b>{a.display_name}</b><span className="text-xs text-muted">@{shortName(a.display_name)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <Textarea
+              ref={taRef}
+              value={input}
+              onChange={(e) => onInput(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+              onBlur={() => { setTimeout(() => setMention(null), 150); }}
+              onKeyDown={(e) => {
+                if (mention && suggestions.length) {
+                  if (e.key === "ArrowDown") { e.preventDefault(); setMi((i) => (i + 1) % suggestions.length); return; }
+                  if (e.key === "ArrowUp") { e.preventDefault(); setMi((i) => (i - 1 + suggestions.length) % suggestions.length); return; }
+                  if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(suggestions[mi]); return; }
+                  if (e.key === "Escape") { setMention(null); return; }
+                }
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+              }}
+              rows={2}
+              placeholder={multiReady ? "Tulis brief… ketik @ untuk memanggil agent lain (Enter kirim, Shift+Enter baris baru)" : "Tulis brief atau pertanyaan… (Enter untuk kirim, Shift+Enter baris baru)"}
+            />
+          </div>
           <Button onClick={send} disabled={busy || !input.trim()} aria-label="Kirim"><SendHorizonal size={18} /></Button>
         </div>
       </div>

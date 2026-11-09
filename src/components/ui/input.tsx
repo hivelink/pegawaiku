@@ -7,7 +7,7 @@ export function Input({ className, ...p }: React.InputHTMLAttributes<HTMLInputEl
     />
   );
 }
-export function Textarea({ className, ...p }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({ className, ...p }: React.ComponentProps<"textarea">) {
   return (
     <textarea
       className={cn("w-full rounded-xl border border-border bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-accent", className)}

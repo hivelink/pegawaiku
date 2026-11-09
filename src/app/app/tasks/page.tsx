@@ -8,7 +8,7 @@ const COLS = [["todo", "Antre"], ["in_progress", "Berjalan"], ["review", "Review
 
 export default async function TasksPage() {
   const { supabase, project } = await getContext();
-  if (!project) return <p className="text-muted">Buat project dulu di sidebar.</p>;
+  if (!project) return <p className="text-muted">Buat project dulu di menu <a className="text-primary underline" href="/app/projects">Project</a>.</p>;
   const [{ data: tasks }, { data: hired }] = await Promise.all([
     supabase.from("tasks").select("id,title,status,agent:agents(display_name)").eq("project_id", project.id).order("created_at"),
     supabase.from("project_agents").select("agent:agents(id,display_name)").eq("project_id", project.id),

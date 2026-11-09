@@ -55,7 +55,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 export default async function ProjectWorkspacePage() {
   const { supabase, user, org, project } = await getContext();
   if (!org || !project) {
-    return <Card className="p-8 text-sm text-muted">Belum ada project. Buat project baru lewat sidebar.</Card>;
+    return <Card className="p-8 text-sm text-muted">Belum ada project. Buat project baru di menu <a className="text-primary underline" href="/app/projects">Project</a>.</Card>;
   }
 
   const [{ data: tasks }, { data: hired }, { data: convs }, { data: files }, { data: members }, { data: owner }, { data: ptools }, { data: gens }] = await Promise.all([
@@ -219,8 +219,8 @@ export default async function ProjectWorkspacePage() {
         </Panel>
 
         {/* Drive */}
-        <Panel icon={HardDrive} title="Drive" subtitle="Dokumen & file" href="/app/drive">
-          {(files ?? []).length === 0 ? <Empty>Belum ada file di Drive. <Link href="/app/drive" className="ml-1 font-semibold text-primary">Unggah →</Link></Empty> : (
+        <Panel icon={HardDrive} title="Drive" subtitle="Dokumen & file" href="/app/project/drive">
+          {(files ?? []).length === 0 ? <Empty>Belum ada file di Drive. <Link href="/app/project/drive" className="ml-1 font-semibold text-primary">Unggah →</Link></Empty> : (
             <ul className="space-y-1.5 text-sm">
               {(files ?? []).map((f) => (
                 <li key={f.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">

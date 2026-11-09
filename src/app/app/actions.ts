@@ -157,6 +157,7 @@ async function _deleteFile(formData: FormData) {
     await supabase.from("files").delete().eq("id", id);
   }
   revalidatePath("/app/drive");
+  revalidatePath("/app/project/drive");
 }
 
 // ---------- Project: hapus / ubah nama / pengaturan ----------
@@ -399,3 +400,29 @@ async function _deleteHttpCapability(formData: FormData) {
 export const reviewCapabilityRequest = guarded("reviewCapabilityRequest", _reviewCapabilityRequest);
 export const toggleCapability = guarded("toggleCapability", _toggleCapability);
 export const deleteHttpCapability = guarded("deleteHttpCapability", _deleteHttpCapability);
+
+// ---------- Peserta chat kolaborasi ----------
+async function _addConversationAgent(formData: FormData) {
+  const { supabase, user } = await getContext();
+  const conv = String(formData.get("conversation_id"));
+  const { data: c } = await supabase.from("conversations").select("project_id").eq("id", conv).single();
+  const project = c ? { id: c.project_id as string } : null;
+  const agentId = String(formData.get("agent_id"));
+  const { error } = await supabase.from("conversation_agents").upsert({ conversation_id: conv, agent_id: agentId, added_by: user.id }, { onConflict: "conversation_id,agent_id" });
+  if (error) throw new Error(/conversation_agents/.test(error.message) ? "Fitur chat kolaborasi belum aktif — jalankan migrasi 0011 di Pengaturan → Pembaruan." : error.message);
+  if (project) await supabase.from("project_agents").upsert({ project_id: project.id, agent_id: agentId, hired_by: user.id }, { onConflict: "project_id,agent_id" });
+  revalidatePath(`/app/chat/${conv}`);
+}
+
+async function _removeConversationAgent(formData: FormData) {
+  const { supabase } = await getContext();
+  const conv = String(formData.get("conversation_id"));
+  const agentId = String(formData.get("agent_id"));
+  const { data: c } = await supabase.from("conversations").select("agent_id").eq("id", conv).single();
+  if (c?.agent_id === agentId) throw new Error("Agent pemilik percakapan tidak bisa dikeluarkan.");
+  await supabase.from("conversation_agents").delete().eq("conversation_id", conv).eq("agent_id", agentId);
+  revalidatePath(`/app/chat/${conv}`);
+}
+
+export const addConversationAgent = guarded("addConversationAgent", _addConversationAgent);
+export const removeConversationAgent = guarded("removeConversationAgent", _removeConversationAgent);
