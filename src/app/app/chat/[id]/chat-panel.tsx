@@ -56,7 +56,27 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
   const abortRef = useRef<AbortController | null>(null);
   const startRef = useRef<number>(0);
   useEffect(() => { if (!busy) return; const t = setInterval(() => setTick((x) => x + 1), 1000); return () => clearInterval(t); }, [busy]);
-  function stop() { abortRef.current?.abort(); setStatus((s) => ({ ...(s ?? { type: "stop" }), label: "Menghentikan…" })); }
+  // ---- Lanjut otomatis saat waktu/langkah habis (maks 3x berturut-turut) ----
+  const AUTO_MAX = 3;
+  const autoCountRef = useRef(0);       // jumlah lanjut otomatis berturut-turut
+  const stoppedRef = useRef(false);     // user menekan Stop → jangan lanjut otomatis
+  const [autoNext, setAutoNext] = useState<{ n: number; secs: number } | null>(null);
+  const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  function cancelAuto() { if (autoTimer.current) clearInterval(autoTimer.current); autoTimer.current = null; setAutoNext(null); }
+  function scheduleAuto(n: number) {
+    cancelAuto();
+    let secs = 5;
+    setAutoNext({ n, secs });
+    autoTimer.current = setInterval(() => {
+      secs -= 1;
+      if (secs <= 0) {
+        cancelAuto();
+        send(`▶️ Lanjutkan (otomatis ${n}/${AUTO_MAX}) — teruskan pekerjaan dari titik terakhir, jangan ulangi yang sudah selesai.`, true);
+      } else setAutoNext({ n, secs });
+    }, 1000);
+  }
+  useEffect(() => () => { if (autoTimer.current) clearInterval(autoTimer.current); }, []);
+  function stop() { stoppedRef.current = true; cancelAuto(); abortRef.current?.abort(); setStatus((s) => ({ ...(s ?? { type: "stop" }), label: "Menghentikan…" })); }
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [upload, setUpload] = useState<{ name: string; pct: number; status: string } | null>(null);
@@ -134,9 +154,13 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
     return () => { stopped = true; clearInterval(poll); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); sb.removeChannel(ch); };
   }, [conversationId, owner.id, router]);
 
-  async function send(override?: string) {
+  async function send(override?: string, auto = false) {
     const content = (override ?? input).trim();
     if (!content || busy) return;
+    cancelAuto();
+    if (!auto) autoCountRef.current = 0; // pesan dari user mengatur ulang hitungan
+    stoppedRef.current = false;
+    let endReason = "";
     if (override === undefined) setInput("");
     setBusy(true);
     setActivity([]);
@@ -188,7 +212,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
             }
             setStatus(ev as Status); if (ev.type === "tool" && ev.label) setActivity((a) => [...a.slice(-5), String(ev.label)]);
           },
-          (sum) => setLastCost(Number(sum.cost ?? 0).toFixed(4)));
+          (sum) => { setLastCost(Number(sum.cost ?? 0).toFixed(4)); endReason = String(sum.reason ?? ""); });
         paint();
       }
       paint(true);
@@ -202,6 +226,11 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
       abortRef.current = null;
       if (multiReady) router.refresh(); // perbarui daftar peserta di header (agent yang baru di-mention)
       setTimeout(() => window.dispatchEvent(new Event("focus")), 300); // sinkronkan ID pesan dengan database
+      // waktu/langkah habis → lanjut otomatis (bisa dibatalkan), kecuali user menekan Stop
+      if ((endReason === "batas_waktu" || endReason === "batas_langkah") && !stoppedRef.current && autoCountRef.current < AUTO_MAX) {
+        autoCountRef.current += 1;
+        scheduleAuto(autoCountRef.current);
+      }
     }
   }
 
@@ -266,6 +295,14 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
               </ul>
             )}
             {Math.floor((Date.now() - startRef.current) / 1000) > 90 && <div className="mt-2 text-[11px] text-amber-700">Tugas ini cukup lama. Jika agent tampak berputar-putar, tekan <b>Stop</b> — hasil yang sudah ada tetap tersimpan.</div>}
+          </div>
+        )}
+        {autoNext && !busy && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 p-2 text-xs text-primary">
+            <Loader2 size={13} className="animate-spin" />
+            <span className="flex-1">Waktu kerja habis — melanjutkan otomatis dalam <b>{autoNext.secs}</b> detik ({autoNext.n}/{AUTO_MAX}).</span>
+            <button type="button" onClick={() => { cancelAuto(); send(`▶️ Lanjutkan (otomatis ${autoNext.n}/${AUTO_MAX}) — teruskan pekerjaan dari titik terakhir, jangan ulangi yang sudah selesai.`, true); }} className="rounded-lg bg-primary px-2.5 py-1 font-semibold text-white">Lanjut sekarang</button>
+            <button type="button" onClick={cancelAuto} className="rounded-lg border border-border bg-white px-2.5 py-1 font-semibold text-slate-700">Batalkan</button>
           </div>
         )}
         {!busy && remoteWorking && (

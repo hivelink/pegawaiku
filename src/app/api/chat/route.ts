@@ -364,7 +364,7 @@ export async function POST(req: Request) {
             const why = { batas_waktu: "waktu kerja habis", batas_langkah: "batas jumlah langkah tercapai", looping: "terdeteksi pengulangan tanpa kemajuan", tool_gagal: "beberapa tool gagal berturut-turut" }[stopReason as "batas_waktu"];
             status({ type: "wrapup", step, max: MAX_STEPS, label: `${agent.display_name} merangkum hasil (${why})…` });
             add(`\n\n---\n_⏸ ${agent.display_name} dihentikan otomatis: ${why}._\n\n`);
-            messages.push({ role: "user", content: `[SISTEM] Pekerjaan dihentikan karena ${why}. Jangan panggil tool. Tulis ringkasan singkat: (1) apa yang sudah berhasil dikerjakan/disimpan, (2) apa yang belum ditemukan atau gagal dan kemungkinan sebabnya, (3) apa yang dibutuhkan dari user untuk melanjutkan.` });
+            messages.push({ role: "user", content: `[SISTEM] Pekerjaan dihentikan karena ${why}. Jangan panggil tool. Tulis ringkasan singkat: (1) apa yang sudah berhasil dikerjakan/disimpan, (2) apa yang belum ditemukan atau gagal dan kemungkinan sebabnya, (3) langkah berikutnya yang akan kamu kerjakan saat dilanjutkan (sistem dapat melanjutkan otomatis), atau data apa yang dibutuhkan dari user bila memang buntu.` });
             try {
               const res = await llmStep({ provider: keyProvider, model, apiKey }, system, messages, [], add, 2000, AbortSignal.any([abort.signal, AbortSignal.timeout(Math.max(3_000, HARD_DEADLINE_MS - (Date.now() - t0)))]));
               seg.inTok += res.usage.input; seg.outTok += res.usage.output;
