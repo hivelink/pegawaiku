@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight, Bell, Settings } from "lucide-react";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 const LABEL: Record<string, string> = {
   app: "home", project: "project", agent: "agent", tasks: "task", drive: "drive", billing: "billing", chat: "chat",
@@ -53,6 +54,7 @@ export function Breadcrumb({ projectName, email, agentName, pendingCaps = 0 }: {
         })}
       </nav>
       <div className="flex items-center gap-2">
+        <ThemeSwitcher />
         <Link href="/app/settings/model" aria-label="Pengaturan" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Settings size={18} /></Link>
         <Link href="/app/settings/capabilities" aria-label="Notifikasi" title={pendingCaps ? `${pendingCaps} permintaan kemampuan menunggu persetujuan` : "Tidak ada notifikasi"} className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100">
           <Bell size={18} />

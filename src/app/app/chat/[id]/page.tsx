@@ -36,7 +36,7 @@ export default async function ChatPage({ params }: { params: Promise<{ id: strin
   const display = [...mentionable, ...((extra ?? []) as ChatAgent[])];
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col">
+    <div className="flex h-[calc(100dvh-10rem)] min-h-[20rem] flex-col md:h-[calc(100dvh-6.5rem)]">
       <Participants conversationId={id} title={conv.title ?? ""} owner={owner} participants={participants} candidates={hiredList.filter((h) => !participants.some((p) => p.id === h.id))} multiReady={multiReady} />
       <ChatPanel
         conversationId={id}

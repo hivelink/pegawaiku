@@ -237,7 +237,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
 
   return (
     <>
-      <div className="flex-1 space-y-4 overflow-y-auto py-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-4">
         {messages.length === 0 && (
           <div className="rounded-2xl bg-sky-50 p-5 text-sm text-primary">
             Beri brief ke <b>{agentName}</b>. Semakin lengkap konteksnya (produk, audiens, tujuan), semakin baik hasilnya.
@@ -275,7 +275,8 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
         })}
         <div ref={bottomRef} />
       </div>
-      <div className="border-t border-border pt-3">
+      {/* kolom ketik + status agent: selalu menempel di bawah layar, tidak ikut ter-scroll */}
+      <div className="sticky bottom-0 z-10 shrink-0 border-t border-border bg-background pb-1 pt-3">
         {busy && (
           <div className="mb-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs">
             <div className="flex items-center gap-2">
@@ -292,7 +293,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-sky-100"><div className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all" style={{ width: `${Math.min(100, (status.step / status.max) * 100)}%` }} /></div>
             ) : null}
             {activity.length > 0 && (
-              <ul className="mt-2 space-y-0.5 text-[11px] text-slate-600">
+              <ul className="mt-2 max-h-24 space-y-0.5 overflow-y-auto text-[11px] text-slate-600">
                 {activity.map((a, i) => <li key={i} className={i === activity.length - 1 ? "font-medium text-slate-800" : "opacity-70"}>{i === activity.length - 1 ? "▸ " : "✓ "}{a}</li>)}
               </ul>
             )}
