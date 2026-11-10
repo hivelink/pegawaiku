@@ -8,9 +8,11 @@ import { buttonVariants } from "@/components/ui/button";
 export default async function ProjectLandingPage() {
   const { supabase, project } = await getContext();
   if (!project) return <Card className="p-8 text-sm text-muted">Belum ada project.</Card>;
-  const { data: published } = await supabase.from("landing_pages").select("slug,published_at,views").eq("project_id", project.id).order("published_at", { ascending: false });
   const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  const { data: files } = await supabase.from("files").select("id,title,storage_path,created_at").eq("project_id", project.id).ilike("title", "%.html").order("created_at", { ascending: false });
+  const [{ data: published }, { data: files }] = await Promise.all([
+    supabase.from("landing_pages").select("slug,published_at,views").eq("project_id", project.id).order("published_at", { ascending: false }),
+    supabase.from("files").select("id,title,storage_path,created_at").eq("project_id", project.id).ilike("title", "%.html").order("created_at", { ascending: false }),
+  ]);
   const pages = await Promise.all((files ?? []).map(async (f) => {
     const { data } = await supabase.storage.from("drive").createSignedUrl(f.storage_path, 60 * 60);
     return { ...f, url: data?.signedUrl ?? null };

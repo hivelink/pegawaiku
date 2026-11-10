@@ -6,6 +6,7 @@ import { SendHorizonal, Paperclip, Loader2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { Markdown } from "@/components/markdown";
+import { CopyButton } from "./copy-button";
 import { feed, type StreamState } from "@/lib/stream-parse";
 import { shortName } from "@/lib/mentions";
 import { splitChoices, decisionText, DECISION_PREFIX } from "@/lib/choices";
@@ -267,6 +268,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
                     );
                   }) : <span className="animate-pulse text-muted">{ag?.display_name ?? agentName} sedang mengetik…</span>}
                 </div>
+                {m.role === "assistant" && m.content.trim() && !(busy && idx === messages.length - 1) && <CopyButton text={m.content} />}
               </div>
             </div>
           );

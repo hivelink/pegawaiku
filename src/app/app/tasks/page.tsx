@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { createTask, moveTask } from "../actions";
 import { SubmitOnce, DeleteTask, DedupeAll } from "./task-controls";
+import { FormPending } from "@/components/ui/form-pending";
 
 const COLS = [["todo", "Antre"], ["in_progress", "Berjalan"], ["review", "Review"], ["done", "Selesai"], ["blocked", "Terhambat"]] as const;
 
@@ -61,7 +62,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
                     <select name="status" defaultValue={t.status} className="h-7 w-full rounded-lg border border-border bg-white px-1 text-xs">
                       {COLS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select>
-                    <button className="mt-1 text-xs font-semibold text-primary">Pindah</button>
+                    <button className="mt-1 text-xs font-semibold text-primary"><FormPending size={12} />Pindah</button>
                   </form>
                 </div>
               ))}

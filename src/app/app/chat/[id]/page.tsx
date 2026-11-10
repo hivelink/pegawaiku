@@ -8,25 +8,22 @@ type Row = { id: string; role: "user" | "assistant"; content: string; agent_id?:
 export default async function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase } = await getContext();
-  const { data: conv } = await supabase
-    .from("conversations")
-    .select("id,title,project_id,agent_id,agent:agents!agent_id(id,slug,display_name,title,avatar_url)")
-    .eq("id", id)
-    .single();
+  // percakapan, pesan, dan peserta diambil bersamaan (sebelumnya berurutan)
+  const [{ data: conv }, r1, partRes] = await Promise.all([
+    supabase.from("conversations").select("id,title,project_id,agent_id,agent:agents!agent_id(id,slug,display_name,title,avatar_url)").eq("id", id).single(),
+    supabase.from("messages").select("id,role,content,agent_id").eq("conversation_id", id).order("created_at"),
+    supabase.from("conversation_agents").select("agent:agents(id,slug,display_name,title,avatar_url)").eq("conversation_id", id).order("added_at"),
+  ]);
   if (!conv) notFound();
   const owner = conv.agent as unknown as ChatAgent | null;
   if (!owner) return <div className="rounded-2xl border border-border bg-card p-8 text-sm text-muted">Agent pemilik percakapan ini sudah tidak aktif.</div>;
 
   // pesan (dengan agent_id bila migrasi 0011 sudah jalan)
   let rows: Row[] = [];
-  const r1 = await supabase.from("messages").select("id,role,content,agent_id").eq("conversation_id", id).order("created_at");
   if (!r1.error) rows = (r1.data ?? []) as Row[];
   else rows = ((await supabase.from("messages").select("id,role,content").eq("conversation_id", id).order("created_at")).data ?? []) as Row[];
 
-  const [partRes, { data: hired }] = await Promise.all([
-    supabase.from("conversation_agents").select("agent:agents(id,slug,display_name,title,avatar_url)").eq("conversation_id", id).order("added_at"),
-    supabase.from("project_agents").select("agent:agents(id,slug,display_name,title,avatar_url)").eq("project_id", conv.project_id),
-  ]);
+  const { data: hired } = await supabase.from("project_agents").select("agent:agents(id,slug,display_name,title,avatar_url)").eq("project_id", conv.project_id);
   const multiReady = !partRes.error;
   const participants: ChatAgent[] = [owner];
   for (const p of (partRes.data ?? []) as unknown as { agent: ChatAgent | null }[]) if (p.agent && !participants.some((x) => x.id === p.agent!.id)) participants.push(p.agent);

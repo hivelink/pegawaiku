@@ -3,6 +3,7 @@ import { getContext } from "@/lib/context";
 import { Card } from "@/components/ui/card";
 import { reviewCapabilityRequest, toggleCapability, deleteHttpCapability } from "../../actions";
 import { ALWAYS_ON_CAPS } from "@/lib/capabilities";
+import { FormPending } from "@/components/ui/form-pending";
 
 const RISK: Record<string, string> = { low: "bg-emerald-100 text-emerald-700", medium: "bg-amber-100 text-amber-800", high: "bg-red-100 text-red-700" };
 const STATUS: Record<string, string> = { pending: "Menunggu", approved: "Disetujui", rejected: "Ditolak", needs_dev: "Perlu pengembangan", done: "Selesai" };
@@ -60,8 +61,8 @@ export default async function CapabilitiesPage() {
               <form action={reviewCapabilityRequest} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="id" value={r.id} />
                 <input name="note" placeholder="Catatan (opsional)" className="min-w-40 flex-1 rounded-lg border border-border px-2 py-1" />
-                <button name="decision" value="approve" className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1 font-semibold text-white"><Check size={14} /> Setujui</button>
-                <button name="decision" value="reject" className="flex items-center gap-1 rounded-lg border border-border px-3 py-1 text-red-600"><X size={14} /> Tolak</button>
+                <button name="decision" value="approve" className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1 font-semibold text-white"><FormPending size={12} /><Check size={14} /> Setujui</button>
+                <button name="decision" value="reject" className="flex items-center gap-1 rounded-lg border border-border px-3 py-1 text-red-600"><FormPending size={12} /><X size={14} /> Tolak</button>
               </form>
             )}
           </Card>
@@ -80,7 +81,7 @@ export default async function CapabilitiesPage() {
               {ALWAYS_ON_CAPS.has(c.key) ? <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Selalu aktif</span> : isAdmin ? (
                 <form action={toggleCapability}>
                   <input type="hidden" name="key" value={c.key} /><input type="hidden" name="enable" value={on.has(c.key) ? "0" : "1"} />
-                  <button className={`rounded-full px-3 py-1 text-xs font-bold ${on.has(c.key) ? "bg-emerald-600 text-white" : "border border-border"}`}>{on.has(c.key) ? "Aktif" : "Nonaktif"}</button>
+                  <button className={`rounded-full px-3 py-1 text-xs font-bold ${on.has(c.key) ? "bg-emerald-600 text-white" : "border border-border"}`}><FormPending size={12} />{on.has(c.key) ? "Aktif" : "Nonaktif"}</button>
                 </form>
               ) : <span className="text-xs">{on.has(c.key) ? "Aktif" : "Nonaktif"}</span>}
             </div>
@@ -99,8 +100,8 @@ export default async function CapabilitiesPage() {
                 <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-slate-50 p-2 text-xs">{JSON.stringify(c.spec, null, 2)}</pre>
                 {isAdmin && (
                   <div className="mt-2 flex gap-2">
-                    <form action={toggleCapability}><input type="hidden" name="key" value={c.key} /><input type="hidden" name="enable" value={on.has(c.key) ? "0" : "1"} /><button className="rounded-lg border border-border px-3 py-1 text-xs">{on.has(c.key) ? "Nonaktifkan" : "Aktifkan"}</button></form>
-                    <form action={deleteHttpCapability}><input type="hidden" name="key" value={c.key} /><button className="rounded-lg border border-border px-3 py-1 text-xs text-red-600">Hapus</button></form>
+                    <form action={toggleCapability}><input type="hidden" name="key" value={c.key} /><input type="hidden" name="enable" value={on.has(c.key) ? "0" : "1"} /><button className="rounded-lg border border-border px-3 py-1 text-xs"><FormPending size={12} />{on.has(c.key) ? "Nonaktifkan" : "Aktifkan"}</button></form>
+                    <form action={deleteHttpCapability}><input type="hidden" name="key" value={c.key} /><button className="rounded-lg border border-border px-3 py-1 text-xs text-red-600"><FormPending size={12} />Hapus</button></form>
                   </div>
                 )}
               </details>
@@ -115,7 +116,7 @@ export default async function CapabilitiesPage() {
         {devs.map((r) => (
           <Card key={r.id} className="flex flex-wrap items-start gap-2 p-3 text-sm">
             <div className="min-w-0 flex-1"><b>{r.title}</b><p className="text-xs text-muted">{r.reason}</p>{r.user_request && <p className="text-xs text-muted">“{r.user_request}”</p>}</div>
-            {isAdmin && <form action={reviewCapabilityRequest}><input type="hidden" name="id" value={r.id} /><button name="decision" value="done" className="rounded-lg border border-border px-3 py-1 text-xs">Tandai selesai</button> <button name="decision" value="reject" className="rounded-lg border border-border px-3 py-1 text-xs text-red-600">Tolak</button></form>}
+            {isAdmin && <form action={reviewCapabilityRequest}><input type="hidden" name="id" value={r.id} /><button name="decision" value="done" className="rounded-lg border border-border px-3 py-1 text-xs"><FormPending size={12} />Tandai selesai</button> <button name="decision" value="reject" className="rounded-lg border border-border px-3 py-1 text-xs text-red-600"><FormPending size={12} />Tolak</button></form>}
           </Card>
         ))}
       </section>

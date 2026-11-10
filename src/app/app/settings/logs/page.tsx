@@ -2,6 +2,7 @@ import { ScrollText, Trash2 } from "lucide-react";
 import { getContext } from "@/lib/context";
 import { Card } from "@/components/ui/card";
 import { clearLogs } from "../../actions";
+import { FormPending } from "@/components/ui/form-pending";
 
 const COLOR: Record<string, string> = { error: "bg-red-100 text-red-700", warn: "bg-amber-100 text-amber-800", info: "bg-sky-100 text-sky-800" };
 
@@ -20,7 +21,7 @@ export default async function LogsPage({ searchParams }: { searchParams: Promise
         <div className="flex items-center gap-2 text-sm">
           {["", "error", "warn", "info"].map((l) => <a key={l} href={`/app/settings/logs${l ? `?level=${l}` : ""}`} className={`rounded-lg border px-3 py-1 ${(sp.level ?? "") === l ? "border-primary bg-sky-50 text-primary" : "border-border"}`}>{l || "semua"}</a>)}
           {org?.owner_id === user.id && (logs ?? []).length > 0 && (
-            <form action={clearLogs}><button className="flex items-center gap-1 rounded-lg border border-border px-3 py-1 text-red-600 hover:bg-red-50"><Trash2 size={14} /> Bersihkan</button></form>
+            <form action={clearLogs}><button className="flex items-center gap-1 rounded-lg border border-border px-3 py-1 text-red-600 hover:bg-red-50"><FormPending size={12} /><Trash2 size={14} /> Bersihkan</button></form>
           )}
         </div>
       </div>

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Plus, Search, X, Check, KeyRound } from "lucide-react";
 import { toggleProjectTool } from "../../actions";
 import { ToolIcon } from "./tool-icon";
+import { FormPending } from "@/components/ui/form-pending";
 
 export type Tool = { key: string; name: string; description: string; category: string; icon: string; requires_key: string | null; is_available: boolean };
 const CAT: Record<string, string> = { internal: "Bawaan", riset: "Riset", media: "Media", publikasi: "Publikasi", integrasi: "Integrasi", jaringan: "Jaringan", perminyakan: "Perminyakan" };
@@ -39,7 +40,7 @@ export function AddToolButton({ tools, enabled, keys }: { tools: Tool[]; enabled
                     </div>
                     <form action={toggleProjectTool}>
                       <input type="hidden" name="tool_key" value={t.key} /><input type="hidden" name="enable" value={on ? "0" : "1"} />
-                      <button disabled={!t.is_available} className={`grid h-9 w-9 place-items-center rounded-lg border ${on ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border hover:bg-slate-50"} disabled:cursor-not-allowed`} aria-label={on ? "Nonaktifkan" : "Aktifkan"}>
+                      <button disabled={!t.is_available} className={`grid h-9 w-9 place-items-center rounded-lg border ${on ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border hover:bg-slate-50"} disabled:cursor-not-allowed`} aria-label={on ? "Nonaktifkan" : "Aktifkan"}><FormPending size={12} />
                         {on ? <Check size={16} /> : <Plus size={16} />}
                       </button>
                     </form>

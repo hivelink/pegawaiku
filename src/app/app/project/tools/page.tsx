@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { toggleProjectTool } from "../../actions";
 import { AddToolButton, type Tool } from "./add-tool";
 import { ToolIcon } from "./tool-icon";
+import { FormPending } from "@/components/ui/form-pending";
 
 export default async function ProjectToolsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const sp = await searchParams;
@@ -46,7 +47,7 @@ export default async function ProjectToolsPage({ searchParams }: { searchParams:
                   <div className="min-w-0 flex-1"><div className="font-bold">{t.name}</div><div className="text-xs text-muted">{t.category}</div></div>
                   <form action={toggleProjectTool}>
                     <input type="hidden" name="tool_key" value={t.key} /><input type="hidden" name="enable" value="0" />
-                    <button aria-label="Hapus dari project" className="rounded-md p-1 text-slate-300 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
+                    <button aria-label="Hapus dari project" className="rounded-md p-1 text-slate-300 hover:bg-red-50 hover:text-red-600"><FormPending size={12} /><Trash2 size={16} /></button>
                   </form>
                 </div>
                 <p className="mt-3 flex-1 text-sm text-slate-600">{t.description}</p>

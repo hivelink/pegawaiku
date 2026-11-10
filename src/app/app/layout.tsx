@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -9,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { SidebarNav } from "./sidebar-nav";
 import { MOBILE_NAV } from "./nav-items";
 import { Breadcrumb } from "./breadcrumb";
+import { NavProgress } from "@/components/nav-progress";
+import { FormPending } from "@/components/ui/form-pending";
 
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,10 +21,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
+      <Suspense fallback={null}><NavProgress /></Suspense>
       <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-card p-4 md:flex">
         <Logo href="/app" />
 
-        <SidebarNav projectName={project?.name ?? null} />
+        <SidebarNav projects={projects.map((p) => ({ id: p.id, name: p.name }))} activeId={project?.id ?? null} />
 
         <div className="mt-6">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Organisasi</div>
@@ -43,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/app/billing" className="mt-2 block rounded-lg bg-accent py-2 text-center text-sm font-semibold text-white hover:bg-sky-600">Top up</Link>
           <div className="mt-3 flex items-center justify-between text-xs text-muted">
             <span className="truncate">{user.email}</span>
-            <form action={signOut}><button className="flex items-center gap-1 hover:text-red-600" title="Keluar"><LogOut size={14} /></button></form>
+            <form action={signOut}><button className="flex items-center gap-1 hover:text-red-600" title="Keluar"><FormPending size={12} /><LogOut size={14} /></button></form>
           </div>
         </div>
       </aside>

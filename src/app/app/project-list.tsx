@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Folder, FolderOpen, MoreHorizontal, Pencil, Trash2, Settings, Loader2 } from "lucide-react";
 import { switchProject, renameProject, deleteProject, openProjectSettings } from "./actions";
+import { FormPending } from "@/components/ui/form-pending";
 
 type P = { id: string; name: string };
 
@@ -53,7 +54,7 @@ export function ProjectList({ projects, activeId }: { projects: P[]; activeId: s
               >
                 <input type="hidden" name="project_id" value={p.id} />
                 <input name="name" defaultValue={p.name} autoFocus className="h-8 w-full rounded-lg border border-border px-2 text-sm" onKeyDown={(e) => { if (e.key === "Escape") setEditing(null); }} />
-                <button className="rounded-lg bg-primary px-2 py-1 text-xs font-semibold text-white">OK</button>
+                <button className="rounded-lg bg-primary px-2 py-1 text-xs font-semibold text-white"><FormPending size={12} />OK</button>
               </form>
             ) : (
               <div className={`group flex items-center rounded-lg ${active ? "bg-sky-50 text-primary" : "hover:bg-slate-100"}`}>

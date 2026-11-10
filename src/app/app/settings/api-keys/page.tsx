@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { saveApiKey, deleteApiKey } from "../../actions";
+import { FormPending } from "@/components/ui/form-pending";
 
 const PROVIDERS: { key: string; name: string; hint: string; url: string; free?: string; group: "gratis" | "berbayar" }[] = [
   // ---- Punya tier GRATIS ----
@@ -73,7 +74,7 @@ export default async function ApiKeysPage({ searchParams }: { searchParams: Prom
                   <Input name="secret" type="password" placeholder={row ? "Ganti kunci…" : p.hint} autoComplete="off" className="font-mono" />
                   <Button type="submit" size="md">Simpan</Button>
                   {row && (
-                    <button formAction={deleteApiKey} aria-label="Hapus" className="rounded-xl border border-border px-3 text-red-600 hover:bg-red-50"><Trash2 size={16} /></button>
+                    <button formAction={deleteApiKey} aria-label="Hapus" className="rounded-xl border border-border px-3 text-red-600 hover:bg-red-50"><FormPending size={12} /><Trash2 size={16} /></button>
                   )}
                 </form>
               )}

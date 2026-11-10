@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { updateProjectSettings, removeBrandAsset } from "../../actions";
 import { ProjectImageUploader, BrandAssetUploader } from "./uploaders";
+import { FormPending } from "@/components/ui/form-pending";
 
 const STATUS: [string, string][] = [["active", "Aktif"], ["on_hold", "Ditunda"], ["done", "Selesai"], ["archived", "Arsip"]];
 
@@ -86,7 +87,7 @@ export default async function ProjectSettingsPage() {
                   <div className="mt-1 truncate text-xs">{a.name}</div>
                   <form action={removeBrandAsset} className="absolute right-1 top-1 opacity-0 group-hover:opacity-100">
                     <input type="hidden" name="path" value={a.path} />
-                    <button aria-label="Hapus" className="rounded-full bg-white p-1 text-red-600 shadow"><Trash2 size={12} /></button>
+                    <button aria-label="Hapus" className="rounded-full bg-white p-1 text-red-600 shadow"><FormPending size={12} /><Trash2 size={12} /></button>
                   </form>
                 </li>
               ))}

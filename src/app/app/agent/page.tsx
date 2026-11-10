@@ -11,8 +11,10 @@ export default async function AgentMarketplace({ searchParams }: { searchParams:
   let query = supabase.from("agents").select("id,slug,display_name,title,category,description,avatar_url,stats").eq("is_active", true).order("display_name");
   if (sp.cat && sp.cat !== "all") query = query.eq("category", sp.cat);
   if (sp.q) query = query.or(`display_name.ilike.%${sp.q}%,title.ilike.%${sp.q}%,description.ilike.%${sp.q}%`);
-  const { data: agents } = await query;
-  const { data: hired } = project ? await supabase.from("project_agents").select("agent_id").eq("project_id", project.id) : { data: [] };
+  const [{ data: agents }, { data: hired }] = await Promise.all([
+    query,
+    project ? supabase.from("project_agents").select("agent_id").eq("project_id", project.id) : Promise.resolve({ data: [] as { agent_id: string }[] }),
+  ]);
   const hiredSet = new Set((hired ?? []).map((h) => h.agent_id));
 
   return (

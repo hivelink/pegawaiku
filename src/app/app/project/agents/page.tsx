@@ -6,6 +6,7 @@ import { CATEGORIES } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { removeAgentFromProject, startConversation } from "../../actions";
+import { FormPending } from "@/components/ui/form-pending";
 
 export default async function ProjectAgentsPage({ searchParams }: { searchParams: Promise<{ cat?: string }> }) {
   const sp = await searchParams;
@@ -60,7 +61,7 @@ export default async function ProjectAgentsPage({ searchParams }: { searchParams
                 <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">✦ Claude{agent.model_hint ? ` · ${agent.model_hint}` : ""}</span>
                 <form action={removeAgentFromProject}>
                   <input type="hidden" name="agent_id" value={agent.id} />
-                  <button aria-label="Keluarkan dari project" title="Keluarkan dari project" className="rounded-md p-1 text-slate-300 hover:bg-red-50 hover:text-red-600"><X size={16} /></button>
+                  <button aria-label="Keluarkan dari project" title="Keluarkan dari project" className="rounded-md p-1 text-slate-300 hover:bg-red-50 hover:text-red-600"><FormPending size={12} /><X size={16} /></button>
                 </form>
               </div>
               <Link href={`/app/agent/${agent.slug}`} className="mt-3 flex items-center gap-3">
@@ -72,7 +73,7 @@ export default async function ProjectAgentsPage({ searchParams }: { searchParams
                 <span>Bergabung {new Date(hired_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}</span>
                 <form action={startConversation}>
                   <input type="hidden" name="agent_id" value={agent.id} />
-                  <button className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-2">Beri tugas</button>
+                  <button className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-2"><FormPending size={12} />Beri tugas</button>
                 </form>
               </div>
             </Card>

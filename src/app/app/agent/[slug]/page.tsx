@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { hireAgent, toggleBookmark, startConversation, toggleAgentSkill, deleteKnowledge, addKnowledgeManual } from "../../actions";
 import { LearnForm } from "./learn-form";
+import { FormPending } from "@/components/ui/form-pending";
 
 export default async function AgentProfile({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ tab?: string; hired?: string }> }) {
   const { slug } = await params;
@@ -127,7 +128,7 @@ export default async function AgentProfile({ params, searchParams }: { params: P
                         )}
                         <form action={deleteKnowledge} className="mt-2">
                           <input type="hidden" name="id" value={k.id} /><input type="hidden" name="slug" value={agent.slug} />
-                          <button className="flex items-center gap-1 text-xs text-red-600"><Trash2 size={12} /> Hapus</button>
+                          <button className="flex items-center gap-1 text-xs text-red-600"><FormPending size={12} /><Trash2 size={12} /> Hapus</button>
                         </form>
                       </details>
                     </li>
@@ -160,7 +161,7 @@ export default async function AgentProfile({ params, searchParams }: { params: P
                       </div>
                       <form action={toggleAgentSkill}>
                         <input type="hidden" name="agent_id" value={agent.id} /><input type="hidden" name="skill_key" value={sk.key} /><input type="hidden" name="slug" value={agent.slug} /><input type="hidden" name="enable" value={on ? "0" : "1"} />
-                        <button aria-label={on ? "Lepas" : "Pasang"} className={`grid h-8 w-8 place-items-center rounded-lg border ${on ? "border-emerald-300 bg-emerald-100 text-emerald-700" : "border-border hover:bg-slate-50"}`}>{on ? <Check size={14} /> : <Plus size={14} />}</button>
+                        <button aria-label={on ? "Lepas" : "Pasang"} className={`grid h-8 w-8 place-items-center rounded-lg border ${on ? "border-emerald-300 bg-emerald-100 text-emerald-700" : "border-border hover:bg-slate-50"}`}><FormPending size={12} />{on ? <Check size={14} /> : <Plus size={14} />}</button>
                       </form>
                     </div>
                   );
