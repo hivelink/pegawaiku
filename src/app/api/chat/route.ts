@@ -64,7 +64,7 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
     case "read_conversation": return "💬 Membaca percakapan lain";
     case "mikrotik_rest": return `📡 MikroTik ${input.method ?? "GET"} ${input.path}`;
     default:
-      if (/^(ipr_vogel|esp_quick|srp_quick|oilfield_convert)$/.test(name)) return `🧮 Menghitung (${name})`;
+      if (/^(ipr_vogel|esp_quick|srp_quick|pcp_quick|oilfield_convert)$/.test(name)) return `🧮 Menghitung (${name})`;
       if (/^(subnet_calc|dns_lookup|http_check)$/.test(name)) return `🌐 Cek jaringan (${name})`;
       return `🛠 ${name}`;
   }

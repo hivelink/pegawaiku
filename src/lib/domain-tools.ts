@@ -46,6 +46,11 @@ export const DOMAIN_TOOL_DEFS: Record<string, ToolDef> = {
     description: "Perkiraan awal sucker rod pump (metode konvensional/Mills): PPRL, MPRL, counterbalance ideal, torsi puncak, laju produksi teoretis dan efisiensi volumetrik, tegangan rod. Untuk pemilihan unit pumping awal; verifikasi dengan API RP 11L/software.",
     input_schema: { type: "object", properties: { plunger_d_in: { type: "number" }, stroke_in: { type: "number" }, spm: { type: "number" }, pump_depth_ft: { type: "number" }, fluid_level_ft: { type: "number" }, rod_string: { type: "string", description: "mis. '76' (7/8+3/4), '86', '75', '65', '77', '88'", default: "76" }, sg: { type: "number", default: 1.0 }, tubing_anchored: { type: "boolean", default: true }, measured_q_bpd: { type: "number", description: "Laju aktual (untuk efisiensi), opsional" } }, required: ["plunger_d_in", "stroke_in", "spm", "pump_depth_ft", "fluid_level_ft"] },
   },
+  pcp_quick: {
+    name: "pcp_quick",
+    description: "Perkiraan awal progressive cavity pump (PCP): net lift, displacement minimum (bpd/rpm & m3/d/rpm) pada kecepatan & efisiensi volumetrik tertentu, torsi hidraulik + friksi, daya polished rod, tegangan efektif (Von Mises) rod, serta tabel sensitivitas kecepatan. Bukan desain final; verifikasi dengan kurva uji pompa vendor/software.",
+    input_schema: { type: "object", properties: { q_bpd: { type: "number", description: "Laju cairan target (bpd)" }, pump_depth_ft: { type: "number" }, fluid_level_ft: { type: "number", description: "Dynamic fluid level dari permukaan (ft)" }, rpm: { type: "number", description: "Kecepatan rencana (rpm)", default: 250 }, vol_eff: { type: "number", description: "Efisiensi volumetrik 0-1", default: 0.85 }, sg: { type: "number", default: 0.95 }, whp_psi: { type: "number", default: 100 }, chp_psi: { type: "number", description: "Tekanan casing (psi)", default: 0 }, friction_psi: { type: "number", description: "Rugi friksi aliran di tubing (psi) — besar pada minyak berat; 0 bila belum dihitung", default: 0 }, friction_torque_frac: { type: "number", description: "Torsi friksi pompa sebagai fraksi torsi hidraulik (pompa kecil ±0,3–0,4; besar ±0,1–0,15)", default: 0.2 }, rod_d_in: { type: "number", description: "Diameter rod (in): 0.75, 0.875, 1, 1.125", default: 0.875 }, rod_yield_psi: { type: "number", description: "Yield strength rod (psi) dari data pabrikan", default: 85000 }, pump_disp_bpd_per_rpm: { type: "number", description: "Displacement pompa yang sudah ada/dipilih (bpd/rpm), opsional — untuk menghitung rpm & torsi aktualnya" } }, required: ["q_bpd", "pump_depth_ft", "fluid_level_ft"] },
+  },
 };
 
 export async function runDomainTool(name: string, input: Record<string, unknown>, keys: Record<string, string>): Promise<string | null> {
@@ -58,6 +63,7 @@ export async function runDomainTool(name: string, input: Record<string, unknown>
     case "ipr_vogel": return iprVogel(input);
     case "esp_quick": return espQuick(input);
     case "srp_quick": return srpQuick(input);
+    case "pcp_quick": return pcpQuick(input);
     default: return null;
   }
 }
@@ -251,4 +257,64 @@ function srpQuick(i: Record<string, unknown>): string {
     `Tubing ${anchored ? "dijangkar" : "TIDAK dijangkar → ada stroke loss tubing, laju aktual lebih rendah"}`,
     `\nCatatan: metode konvensional (Mills), belum memperhitungkan peregangan rod/tubing detail & dinamika gelombang; pakai API RP 11L/software untuk unit sizing final.`,
   ].join("\n");
+}
+
+/** PCP: estimasi awal. Rumus umum: displacement = q/(rpm·eff); T_hid = V_per_putaran·ΔP/(2π); daya = T·ω; Von Mises σe = √(σ² + 3τ²). */
+function pcpQuick(i: Record<string, unknown>): string {
+  const num = (v: unknown, d: number) => (v == null || v === "" || !Number.isFinite(Number(v)) ? d : Number(v));
+  const q = Number(i.q_bpd), L = Number(i.pump_depth_ft), fl = Number(i.fluid_level_ft);
+  const eff = num(i.vol_eff, 0.85), sg = num(i.sg, 0.95), whp = num(i.whp_psi, 100), chp = num(i.chp_psi, 0);
+  const fric = num(i.friction_psi, 0), ffr = num(i.friction_torque_frac, 0.2), d = num(i.rod_d_in, 0.875), ys = num(i.rod_yield_psi, 85000);
+  const pumpDisp = i.pump_disp_bpd_per_rpm != null ? Number(i.pump_disp_bpd_per_rpm) : undefined;
+  let rpm = num(i.rpm, 250);
+  if (!(q > 0 && L > 0 && fl >= 0 && fl <= L)) return "Input tidak valid: butuh q > 0, kedalaman pompa > 0, dan 0 ≤ fluid level ≤ kedalaman pompa.";
+  if (!(eff > 0 && eff <= 1) || !(rpm > 0) || !(d > 0) || !(sg > 0)) return "Input tidak valid: vol_eff 0–1, rpm > 0, rod_d_in > 0, sg > 0.";
+  if (pumpDisp != null && !(pumpDisp > 0)) return "pump_disp_bpd_per_rpm harus > 0.";
+  const grad = 0.433 * sg;                              // psi/ft
+  const pDis = whp + grad * L + fric;                   // tekanan discharge pompa
+  const pInt = chp + grad * (L - fl);                   // tekanan intake (kolom cairan di atas pompa, tanpa koreksi gas)
+  const lift = pDis - pInt;                             // net lift (psi)
+  if (!(lift > 0)) return `Net lift ≤ 0 (discharge ${pDis.toFixed(0)} psi, intake ${pInt.toFixed(0)} psi) — sumur tidak membutuhkan pompa pada kondisi ini; periksa input.`;
+  const calc = (dispBpdRpm: number, n: number) => {
+    const vRev = dispBpdRpm * 0.158987 / 1440;          // m³ per putaran
+    const tHyd = vRev * lift * 6894.757 / (2 * Math.PI); // N·m
+    const tTot = tHyd * (1 + ffr);
+    const hp = tTot * (2 * Math.PI * n / 60) / 745.7;
+    return { tHyd, tTot, hp };
+  };
+  const dispMin = q / (rpm * eff);                      // bpd/rpm
+  const disp = pumpDisp ?? dispMin;
+  if (pumpDisp != null) rpm = q / (pumpDisp * eff);
+  const { tHyd, tTot, hp } = calc(disp, rpm);
+  const ftlb = (nm: number) => nm * 0.737562;
+  // rod: berat API umum (lb/ft)
+  const wrTable: [number, number][] = [[0.75, 1.63], [0.875, 2.22], [1, 2.9], [1.125, 3.67]];
+  const wr = wrTable.reduce((a, b) => (Math.abs(b[0] - d) < Math.abs(a[0] - d) ? b : a))[1] * (d * d) / (wrTable.reduce((a, b) => (Math.abs(b[0] - d) < Math.abs(a[0] - d) ? b : a))[0] ** 2);
+  const area = Math.PI * d * d / 4;                     // in²
+  const axial = wr * L * (1 - 0.128 * sg);              // lb, berat rod terendam (beban aksial pompa belum termasuk)
+  const sigma = axial / area;                           // psi
+  const tau = 16 * (ftlb(tTot) * 12) / (Math.PI * d ** 3); // psi
+  const vm = Math.sqrt(sigma * sigma + 3 * tau * tau);
+  const pct = (vm / ys) * 100;
+  const hydHp = q * lift / 58766;                       // hp hidraulik (bpd·psi/58766)
+  const rows = [150, 200, 250, 300, 350, 400, 500].map((n) => {
+    const dd = pumpDisp ?? q / (n * eff);
+    const qq = pumpDisp != null ? pumpDisp * n * eff : q;
+    const c = calc(dd, n);
+    return `| ${n} | ${dd.toFixed(2)} | ${(dd * 0.158987).toFixed(3)} | ${qq.toFixed(0)} | ${ftlb(c.tTot).toFixed(0)} | ${c.hp.toFixed(1)} |`;
+  });
+  const out = [
+    `Tekanan discharge ≈ ${pDis.toFixed(0)} psi | intake ≈ ${pInt.toFixed(0)} psi | NET LIFT ≈ ${lift.toFixed(0)} psi (${(lift * 6.894757).toFixed(0)} kPa, setara ${(lift / grad).toFixed(0)} ft kolom fluida)`,
+    pumpDisp != null
+      ? `Pompa ${pumpDisp} bpd/rpm → butuh ≈ ${rpm.toFixed(0)} rpm untuk ${q} bpd pada efisiensi volumetrik ${(eff * 100).toFixed(0)}%`
+      : `Displacement minimum ≈ ${dispMin.toFixed(2)} bpd/rpm (${(dispMin * 0.158987).toFixed(3)} m³/d/rpm) pada ${rpm} rpm, efisiensi volumetrik ${(eff * 100).toFixed(0)}%`,
+    `Torsi hidraulik ≈ ${ftlb(tHyd).toFixed(0)} ft·lb (${tHyd.toFixed(0)} N·m) | + friksi pompa ${(ffr * 100).toFixed(0)}% → torsi rod ≈ ${ftlb(tTot).toFixed(0)} ft·lb (${tTot.toFixed(0)} N·m); torsi viskos/gesek rod-tubing BELUM termasuk`,
+    `Daya polished rod ≈ ${hp.toFixed(1)} hp (${(hp * 0.7457).toFixed(1)} kW) | daya hidraulik ${hydHp.toFixed(1)} hp → pilih motor dengan cadangan untuk rugi drivehead & start`,
+    `Rod ${d} in: beban aksial (berat rod terendam) ≈ ${axial.toFixed(0)} lb, tegangan aksial ${sigma.toFixed(0)} psi, geser torsi ${tau.toFixed(0)} psi → tegangan efektif (Von Mises) ≈ ${vm.toFixed(0)} psi = ${pct.toFixed(0)}% yield ${ys} psi ${pct > 80 ? "→ DI ATAS 80% yield: perbesar rod / turunkan torsi" : "(di bawah batas desain umum 80% yield)"}; beban aksial akibat tekanan pompa belum termasuk`,
+    rpm > 500 ? `PERINGATAN: ${rpm.toFixed(0)} rpm di atas 500 rpm — tidak disarankan; pilih pompa displacement lebih besar.` : rpm > 400 ? `Catatan: ${rpm.toFixed(0)} rpm cukup tinggi; keausan rod/tubing & stator naik, pertimbangkan displacement lebih besar.` : "",
+    `\nSensitivitas kecepatan (${pumpDisp != null ? "pompa tetap" : "laju target tetap"}):`,
+    `| rpm | bpd/rpm | m³/d/rpm | laju bpd | torsi rod ft·lb | daya hp |`, `|---|---|---|---|---|---|`, ...rows,
+    `\nCatatan: estimasi awal. Belum memperhitungkan gas bebas di intake, slip aktual vs tekanan (kurva uji pompa), swelling elastomer, torsi viskos, dan beban aksial pompa. Rating lift pompa harus di atas net lift dengan cadangan sesuai rekomendasi vendor.`,
+  ];
+  return out.filter(Boolean).join("\n");
 }
