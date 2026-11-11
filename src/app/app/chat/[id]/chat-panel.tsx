@@ -83,9 +83,34 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
   const [upload, setUpload] = useState<{ name: string; pct: number; status: string } | null>(null);
 
   /** Lampirkan bahan: unggah ke Drive (langsung ke Storage, dengan progres) lalu sisipkan instruksi baca ke pesan. */
+  const busyUpload = !!upload && (upload.status === "Mengunggah" || upload.status === "Menyiapkan…");
   async function attach(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (file) await uploadFile(file);
+  }
+  /** Gambar hasil snip/salin (Ctrl+V) atau file yang diseret ke kolom ketik → langsung diunggah sebagai lampiran. */
+  function filesFrom(dt: DataTransfer | null): File[] {
+    if (!dt) return [];
+    const out: File[] = [];
+    for (const it of Array.from(dt.items ?? [])) { if (it.kind === "file") { const f = it.getAsFile(); if (f) out.push(f); } }
+    if (!out.length) out.push(...Array.from(dt.files ?? []));
+    return out;
+  }
+  async function takeFiles(files: File[], pasted: boolean) {
+    for (const f of files.slice(0, 4)) {
+      let file = f;
+      // hasil snip selalu bernama "image.png" → beri nama unik agar tidak saling menimpa di Drive
+      if (pasted && f.type.startsWith("image/")) {
+        const d = new Date(); const pad = (n: number) => String(n).padStart(2, "0");
+        const ext = (f.type.split("/")[1] || "png").replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "png";
+        file = new File([f], `tempel-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`, { type: f.type });
+      }
+      await uploadFile(file);
+    }
+  }
+  async function uploadFile(file: File) {
+    const isImage = file.type.startsWith("image/");
+    if (isImage && file.size > 3.5 * 1024 * 1024) { setUpload({ name: file.name, pct: 0, status: "Gagal: gambar lebih dari 3,5 MB — perkecil atau potong dulu" }); return; }
     setUpload({ name: file.name, pct: 0, status: "Menyiapkan…" });
     try {
       const signRes = await fetch("/api/drive/sign", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project_id: projectId, filename: file.name, size: file.size }) });
@@ -103,7 +128,10 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
       const done = await fetch("/api/drive/complete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project_id: projectId, path: sign.path, title: file.name, mime: file.type, size: file.size }) });
       if (!done.ok) throw new Error((await done.json().catch(() => ({}))).error ?? "Gagal mencatat file");
       setUpload({ name: file.name, pct: 100, status: "Terunggah ✓" });
-      setInput((v) => `${v ? v + "\n\n" : ""}Saya mengunggah bahan "${file.name}" ke Drive. Baca seluruh isinya (read_drive_file, lanjutkan semua part) sebelum mengerjakan.`);
+      setInput((v) => `${v ? v + "\n\n" : ""}${isImage
+        ? `Saya melampirkan gambar "${file.name}" (tersimpan di Drive). Lihat gambarnya dengan view_image sebelum menjawab.`
+        : `Saya mengunggah bahan "${file.name}" ke Drive. Baca seluruh isinya (read_drive_file, lanjutkan semua part) sebelum mengerjakan.`}`);
+      taRef.current?.focus();
       setTimeout(() => setUpload(null), 3000);
     } catch (err) {
       setUpload({ name: file.name, pct: 0, status: `Gagal: ${(err as Error).message}` });
@@ -343,6 +371,19 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
               value={input}
               onChange={(e) => onInput(e.target.value, e.target.selectionStart ?? e.target.value.length)}
               onBlur={() => { setTimeout(() => setMention(null), 150); }}
+              onPaste={(e) => {
+                const files = filesFrom(e.clipboardData).filter((f) => f.type.startsWith("image/"));
+                if (!files.length) return; // teks biasa: biarkan ditempel seperti biasa
+                e.preventDefault();
+                if (!busyUpload) void takeFiles(files, true);
+              }}
+              onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) e.preventDefault(); }}
+              onDrop={(e) => {
+                const files = filesFrom(e.dataTransfer);
+                if (!files.length) return;
+                e.preventDefault();
+                if (!busyUpload) void takeFiles(files, false);
+              }}
               onKeyDown={(e) => {
                 if (mention && suggestions.length) {
                   if (e.key === "ArrowDown") { e.preventDefault(); setMi((i) => (i + 1) % suggestions.length); return; }
@@ -353,7 +394,7 @@ export function ChatPanel({ conversationId, owner, agents, known, multiReady, in
                 if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
               }}
               rows={2}
-              placeholder={multiReady ? "Tulis brief… ketik @ untuk memanggil agent lain (Enter kirim, Shift+Enter baris baru)" : "Tulis brief atau pertanyaan… (Enter untuk kirim, Shift+Enter baris baru)"}
+              placeholder={multiReady ? "Tulis brief… ketik @ untuk memanggil agent lain, Ctrl+V untuk menempel gambar (Enter kirim, Shift+Enter baris baru)" : "Tulis brief atau pertanyaan… Ctrl+V untuk menempel gambar (Enter kirim, Shift+Enter baris baru)"}
             />
           </div>
           <Button onClick={() => send()} disabled={busy || !input.trim()} aria-label="Kirim"><SendHorizonal size={18} /></Button>

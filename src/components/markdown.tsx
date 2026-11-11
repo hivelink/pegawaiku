@@ -4,7 +4,20 @@ import { useMemo } from "react";
 /** Renderer Markdown ringan tanpa dependensi: heading, bold, code, list, tabel, paragraf. */
 export function Markdown({ text }: { text: string }) {
   const html = useMemo(() => render(text), [text]);
-  return <div className="prose-chat" dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div className="prose-chat" onClick={onCopyCode} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+/** Klik tombol "Salin" pada kotak kode → salin isi kode apa adanya (tanpa nama bahasa). */
+async function onCopyCode(e: React.MouseEvent<HTMLDivElement>) {
+  const btn = (e.target as HTMLElement).closest?.("[data-copy-code]") as HTMLButtonElement | null;
+  if (!btn) return;
+  const code = btn.closest(".code-box")?.querySelector("pre")?.textContent ?? "";
+  let ok = false;
+  try { await navigator.clipboard.writeText(code); ok = true; } catch {
+    try { const ta = document.createElement("textarea"); ta.value = code; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); ta.remove(); } catch { ok = false; }
+  }
+  btn.textContent = ok ? "Tersalin ✓" : "Gagal";
+  setTimeout(() => { btn.textContent = "Salin"; }, 1600);
 }
 
 function esc(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
@@ -23,9 +36,12 @@ function render(md: string) {
   while (i < lines.length) {
     const l = lines[i];
     if (l.startsWith("```")) {
+      const lang = l.slice(3).trim().replace(/[^\w+#.-]/g, "").slice(0, 20);
       const buf: string[] = []; i++;
       while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
-      i++; out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`); continue;
+      i++;
+      // kotak kode dengan tombol Salin (ditangani lewat klik terdelegasi di komponen Markdown)
+      out.push(`<div class="code-box"><div class="code-bar"><span>${esc(lang || "kode")}</span><button type="button" data-copy-code>Salin</button></div><pre><code>${esc(buf.join("\n"))}</code></pre></div>`); continue;
     }
     if (/^\|.*\|\s*$/.test(l)) {
       const rows: string[] = [];
