@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "count": 32,
+  "count": 33,
   "agents": [
     {
       "name": "aldi-market-research-strategist",
@@ -29,6 +29,34 @@
       "body_lines": 124
     },
     {
+      "name": "arka-asisten-otonom",
+      "display_name": "Arka",
+      "title": "Asisten Pribadi Otonom",
+      "category": "management",
+      "description": "Dipakai saat user ingin pekerjaan dikerjakan sendiri oleh AI tanpa harus mengetik perintah tiap kali: misi sekali jalan atau rutin (cek jaringan tiap pagi, ide konten mingguan, rangkuman pekerjaan), riset di internet, membuat presentasi dan konten, mengedit gambar, serta mengatur router MikroTik dengan persetujuan user. Arka mempelajari kebiasaan user dan mengusulkan pekerjaan yang layak diotomatiskan. Trigger: \"kerjakan ini tiap pagi\", \"pantau jaringan saya\", \"buatkan presentasi dari bahan ini\", \"edit gambar ini\", \"ingat bahwa saya suka…\", \"apa yang bisa kamu otomatiskan untuk saya\".",
+      "language": "id",
+      "requires_tools": [
+        "web_search",
+        "web_fetch",
+        "read_drive_file",
+        "save_to_drive",
+        "create_task",
+        "make_presentation",
+        "image_generate",
+        "image_edit",
+        "remember",
+        "propose_mission",
+        "consult_agent",
+        "mikrotik_rest",
+        "subnet_calc",
+        "dns_lookup",
+        "http_check"
+      ],
+      "version": "1.0.0",
+      "path": "skills/arka-asisten-otonom/SKILL.md",
+      "body_lines": 102
+    },
+    {
       "name": "arya-image-prompt-orchestrator",
       "display_name": "Arya",
       "title": "Image Prompt Orchestrator",
@@ -42,6 +70,25 @@
       "version": "1.0.0",
       "path": "skills/arya-image-prompt-orchestrator/SKILL.md",
       "body_lines": 119
+    },
+    {
+      "name": "bayu-production-engineer",
+      "display_name": "Bayu",
+      "title": "Production Engineer (Artificial Lift)",
+      "category": "engineering",
+      "description": "Dipakai saat user butuh analisis produksi sumur minyak dan artificial lift: kurva IPR (Vogel/komposit), perkiraan desain ESP (TDH, stage, daya motor), analisis sucker rod pump (beban rod, counterbalance, torsi, efisiensi volumetrik), konversi satuan oilfield, diagnosis masalah operasi (gas lock, pump-off, fluid pound, kavitasi), dan menyusun bahan ajar/laporan teknik dari dokumen user. Trigger: \"hitung IPR sumur ini\", \"desain awal ESP\", \"berapa stage yang dibutuhkan\", \"analisis dynamometer/beban rod\", \"kenapa ESP sering trip\", \"konversi psi ke bar\", \"buat modul kuliah pompa ESP\".",
+      "language": "id",
+      "requires_tools": [
+        "ipr_vogel",
+        "esp_quick",
+        "srp_quick",
+        "oilfield_convert",
+        "read_drive_file",
+        "web_search"
+      ],
+      "version": "1.0.0",
+      "path": "skills/bayu-production-engineer/SKILL.md",
+      "body_lines": 90
     },
     {
       "name": "bejo-image-poster-specialist",
@@ -111,6 +158,24 @@
       "body_lines": 119
     },
     {
+      "name": "eka-event-expert",
+      "display_name": "Eka",
+      "title": "Event Expert (Perencana & Pemandu Acara)",
+      "category": "event",
+      "description": "Dipakai saat user merencanakan dan menjalankan acara: konsep & proposal acara lengkap dengan RAB (rincian biaya), timeline persiapan dan monitoring progres, rundown menit-per-menit, kartu acuan MC/pemandu acara, ice breaking dan games, kuis Kahoot/Quizizz (siap impor), naskah pembukaan & sambutan, serta pantun bertema acara. Trigger: \"buat proposal acara gathering kantor\", \"hitung biaya seminar 200 orang\", \"susun rundown pernikahan\", \"buat kartu MC\", \"bikin kuis Kahoot tentang K3\", \"naskah pembukaan acara\", \"pantun pembuka halal bihalal\", \"pantau persiapan event kita\".",
+      "language": "id",
+      "requires_tools": [
+        "web_search",
+        "web_fetch",
+        "save_to_drive",
+        "read_drive_file",
+        "create_task"
+      ],
+      "version": "1.0.0",
+      "path": "skills/eka-event-expert/SKILL.md",
+      "body_lines": 161
+    },
+    {
       "name": "fani-finance-analyst",
       "display_name": "Fani",
       "title": "Finance Analyst",
@@ -163,6 +228,24 @@
       "version": "1.0.0",
       "path": "skills/hani-video-ad-generator/SKILL.md",
       "body_lines": 114
+    },
+    {
+      "name": "hasan-ustadz-muslim",
+      "display_name": "Ustadz Hasan",
+      "title": "Ustadz – Guru Al-Qur'an, Bahasa Arab & Kajian Islam",
+      "category": "religi",
+      "description": "Dipakai saat user ingin belajar atau bertanya tentang Islam: belajar membaca Al-Qur'an dan tajwid, program menghafal (tahfidz) dan muraja'ah, mengecek hafalan berbasis teks, belajar bahasa Arab (mufradat, nahwu, sharaf, percakapan), memahami tafsir dan kandungan ayat, hadits beserta sanad dan derajatnya, fiqih ibadah dan muamalah dengan perbedaan madzhab, ushul fiqh, sirah nabawiyah dan sejarah Islam, serta menyusun materi kajian atau khutbah. Trigger: \"ajari saya tajwid\", \"cek hafalan Al-Mulk saya\", \"jadwal hafalan juz 30\", \"belajar bahasa Arab dari nol\", \"apa tafsir ayat ini\", \"hadits ini shahih tidak\", \"hukum zakat penghasilan\", \"kisah Nabi saat perjanjian Hudaibiyah\", \"buat materi kultum\".",
+      "language": "id",
+      "requires_tools": [
+        "web_search",
+        "web_fetch",
+        "read_drive_file",
+        "save_to_drive",
+        "learn_skill"
+      ],
+      "version": "1.0.0",
+      "path": "skills/hasan-ustadz-muslim/SKILL.md",
+      "body_lines": 177
     },
     {
       "name": "kira-image-prompt-engineer",
@@ -309,6 +392,25 @@
       "body_lines": 128
     },
     {
+      "name": "satria-network-engineer",
+      "display_name": "Satria",
+      "title": "Network Engineer (MikroTik & LAN)",
+      "category": "engineering",
+      "description": "Dipakai saat user butuh bantuan jaringan: desain subnet/VLAN, konfigurasi MikroTik RouterOS (firewall, NAT, DHCP, hotspot/voucher, queue/bandwidth, VPN WireGuard, bridge VLAN), troubleshooting koneksi (ping/DNS/HTTP, routing, DNS), pembacaan konfigurasi router langsung via REST API, dan dokumentasi topologi. Trigger: \"bagi subnet untuk 4 VLAN\", \"buat script firewall MikroTik\", \"setup hotspot voucher\", \"kenapa internet putus-putus\", \"cek konfigurasi router saya\", \"limit bandwidth per user\", \"setup WireGuard\".",
+      "language": "id",
+      "requires_tools": [
+        "subnet_calc",
+        "dns_lookup",
+        "http_check",
+        "mikrotik_rest",
+        "read_drive_file",
+        "web_search"
+      ],
+      "version": "1.0.0",
+      "path": "skills/satria-network-engineer/SKILL.md",
+      "body_lines": 91
+    },
+    {
       "name": "vera-landing-page-builder",
       "display_name": "Vera",
       "title": "Landing Page Builder",
@@ -372,80 +474,6 @@
       "version": "1.0.0",
       "path": "skills/zara-ad-script-specialist/SKILL.md",
       "body_lines": 119
-    },
-    {
-      "name": "bayu-production-engineer",
-      "display_name": "Bayu",
-      "title": "Production Engineer (Artificial Lift)",
-      "category": "engineering",
-      "description": "Dipakai saat user butuh analisis produksi sumur minyak dan artificial lift: kurva IPR (Vogel/komposit), perkiraan desain ESP (TDH, stage, daya motor), analisis sucker rod pump (beban rod, counterbalance, torsi, efisiensi volumetrik), konversi satuan oilfield, diagnosis masalah operasi (gas lock, pump-off, fluid pound, kavitasi), dan menyusun bahan ajar/laporan teknik dari dokumen user. Trigger: \"hitung IPR sumur ini\", \"desain awal ESP\", \"berapa stage yang dibutuhkan\", \"analisis dynamometer/beban rod\", \"kenapa ESP sering trip\", \"konversi psi ke bar\", \"buat modul kuliah pompa ESP\".",
-      "language": "id",
-      "requires_tools": [
-        "ipr_vogel",
-        "esp_quick",
-        "srp_quick",
-        "oilfield_convert",
-        "read_drive_file",
-        "web_search"
-      ],
-      "version": "1.0.0",
-      "path": "skills/bayu-production-engineer/SKILL.md",
-      "body_lines": 90
-    },
-    {
-      "name": "satria-network-engineer",
-      "display_name": "Satria",
-      "title": "Network Engineer (MikroTik & LAN)",
-      "category": "engineering",
-      "description": "Dipakai saat user butuh bantuan jaringan: desain subnet/VLAN, konfigurasi MikroTik RouterOS (firewall, NAT, DHCP, hotspot/voucher, queue/bandwidth, VPN WireGuard, bridge VLAN), troubleshooting koneksi (ping/DNS/HTTP, routing, DNS), pembacaan konfigurasi router langsung via REST API, dan dokumentasi topologi. Trigger: \"bagi subnet untuk 4 VLAN\", \"buat script firewall MikroTik\", \"setup hotspot voucher\", \"kenapa internet putus-putus\", \"cek konfigurasi router saya\", \"limit bandwidth per user\", \"setup WireGuard\".",
-      "language": "id",
-      "requires_tools": [
-        "subnet_calc",
-        "dns_lookup",
-        "http_check",
-        "mikrotik_rest",
-        "read_drive_file",
-        "web_search"
-      ],
-      "version": "1.0.0",
-      "path": "skills/satria-network-engineer/SKILL.md",
-      "body_lines": 91
-    },
-    {
-      "name": "eka-event-expert",
-      "display_name": "Eka",
-      "title": "Event Expert (Perencana & Pemandu Acara)",
-      "category": "event",
-      "description": "Dipakai saat user merencanakan dan menjalankan acara: konsep & proposal acara lengkap dengan RAB (rincian biaya), timeline persiapan dan monitoring progres, rundown menit-per-menit, kartu acuan MC/pemandu acara, ice breaking dan games, kuis Kahoot/Quizizz (siap impor), naskah pembukaan & sambutan, serta pantun bertema acara. Trigger: \"buat proposal acara gathering kantor\", \"hitung biaya seminar 200 orang\", \"susun rundown pernikahan\", \"buat kartu MC\", \"bikin kuis Kahoot tentang K3\", \"naskah pembukaan acara\", \"pantun pembuka halal bihalal\", \"pantau persiapan event kita\".",
-      "language": "id",
-      "requires_tools": [
-        "web_search",
-        "web_fetch",
-        "save_to_drive",
-        "read_drive_file",
-        "create_task"
-      ],
-      "version": "1.0.0",
-      "path": "skills/eka-event-expert/SKILL.md",
-      "body_lines": 161
-    },
-    {
-      "name": "hasan-ustadz-muslim",
-      "display_name": "Ustadz Hasan",
-      "title": "Ustadz – Guru Al-Qur'an, Bahasa Arab & Kajian Islam",
-      "category": "religi",
-      "description": "Dipakai saat user ingin belajar atau bertanya tentang Islam: belajar membaca Al-Qur'an dan tajwid, program menghafal (tahfidz) dan muraja'ah, mengecek hafalan berbasis teks, belajar bahasa Arab (mufradat, nahwu, sharaf, percakapan), memahami tafsir dan kandungan ayat, hadits beserta sanad dan derajatnya, fiqih ibadah dan muamalah dengan perbedaan madzhab, ushul fiqh, sirah nabawiyah dan sejarah Islam, serta menyusun materi kajian atau khutbah. Trigger: \"ajari saya tajwid\", \"cek hafalan Al-Mulk saya\", \"jadwal hafalan juz 30\", \"belajar bahasa Arab dari nol\", \"apa tafsir ayat ini\", \"hadits ini shahih tidak\", \"hukum zakat penghasilan\", \"kisah Nabi saat perjanjian Hudaibiyah\", \"buat materi kultum\".",
-      "language": "id",
-      "requires_tools": [
-        "web_search",
-        "web_fetch",
-        "read_drive_file",
-        "save_to_drive",
-        "learn_skill"
-      ],
-      "version": "1.0.0",
-      "path": "skills/hasan-ustadz-muslim/SKILL.md",
-      "body_lines": 177
     }
   ]
 }

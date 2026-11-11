@@ -17,7 +17,13 @@ import { FormPending } from "@/components/ui/form-pending";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { supabase, user, org, orgs, project, projects } = await getContext();
   // jumlah permintaan kemampuan menunggu (tabel bisa belum ada → 0)
-  const { count: pendingCaps } = org ? await supabase.from("capability_requests").select("id", { count: "exact", head: true }).eq("org_id", org.id).eq("status", "pending") : { count: 0 };
+  // + jumlah keputusan Asisten Otonom yang menunggu (tabel bisa belum ada → 0)
+  const [{ count: pendingCaps }, { count: pendingApprovals }] = org
+    ? await Promise.all([
+        supabase.from("capability_requests").select("id", { count: "exact", head: true }).eq("org_id", org.id).eq("status", "pending"),
+        supabase.from("auto_approvals").select("id", { count: "exact", head: true }).eq("org_id", org.id).eq("status", "pending"),
+      ])
+    : [{ count: 0 }, { count: 0 }];
 
   return (
     <div className="flex min-h-screen">
@@ -25,7 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-card p-4 md:flex">
         <Logo href="/app" />
 
-        <SidebarNav projects={projects.map((p) => ({ id: p.id, name: p.name }))} activeId={project?.id ?? null} />
+        <SidebarNav projects={projects.map((p) => ({ id: p.id, name: p.name }))} activeId={project?.id ?? null} pendingApprovals={pendingApprovals ?? 0} />
 
         <div className="mt-6">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Organisasi</div>

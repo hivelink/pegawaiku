@@ -2,11 +2,12 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, HardDrive, KanbanSquare, CreditCard, FolderOpen, Folder, Settings, Bot, MessagesSquare, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Home, Users, HardDrive, KanbanSquare, CreditCard, FolderOpen, Folder, Settings, Bot, MessagesSquare, ChevronDown, ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { switchProject } from "./actions";
 
 const TOP = [
   { href: "/app", label: "Home", icon: Home, exact: true },
+  { href: "/app/asisten", label: "Asisten", icon: Sparkles },
   { href: "/app/projects", label: "Project", icon: Folder },
   { href: "/app/agent", label: "Agent", icon: Users },
   { href: "/app/drive", label: "Drive", icon: HardDrive, exact: true },
@@ -20,7 +21,7 @@ type P = { id: string; name: string };
  * Navigasi sidebar: menu utama + semua project di bawah menu Project.
  * Project yang dipilih terbuka (ikon folder terbuka) dan menampilkan Chat, Agent, Task, Drive.
  */
-export function SidebarNav({ projects, activeId }: { projects: P[]; activeId: string | null }) {
+export function SidebarNav({ projects, activeId, pendingApprovals = 0 }: { projects: P[]; activeId: string | null; pendingApprovals?: number }) {
   const path = usePathname();
   const [collapsed, setCollapsed] = useState(false); // project aktif boleh dilipat
   const [switching, setSwitching] = useState<string | null>(null);
@@ -44,7 +45,10 @@ export function SidebarNav({ projects, activeId }: { projects: P[]; activeId: st
     <nav className="mt-6 space-y-1">
       {TOP.map(({ href, label, icon: Icon, exact, match }) => (
         <div key={href}>
-          <Link href={href} className={item(isOn(href, exact, match))}><Icon size={18} className="text-primary" /> {label}</Link>
+          <Link href={href} className={item(isOn(href, exact, match))}>
+            <Icon size={18} className="text-primary" /> {label}
+            {href === "/app/asisten" && pendingApprovals > 0 && <span className="ml-auto rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white" title={`${pendingApprovals} keputusan menunggu Anda`}>{pendingApprovals}</span>}
+          </Link>
           {href === "/app/projects" && projects.length > 0 && (
             <div className="ml-5 mt-1 max-h-[45vh] space-y-0.5 overflow-y-auto border-l border-border pl-2">
               {projects.map((p) => {

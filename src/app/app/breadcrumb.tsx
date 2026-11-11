@@ -5,7 +5,7 @@ import { ChevronRight, Bell, Settings } from "lucide-react";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 
 const LABEL: Record<string, string> = {
-  app: "home", project: "project", agent: "agent", tasks: "task", drive: "drive", billing: "billing", chat: "chat",
+  app: "home", asisten: "asisten", project: "project", agent: "agent", tasks: "task", drive: "drive", billing: "billing", chat: "chat",
   settings: "setting", agents: "agent", ai: "ai", tools: "tool", "api-keys": "kunci api", model: "model ai", logs: "log", capabilities: "kemampuan", update: "pembaruan", landing: "landing", users: "anggota",
 };
 

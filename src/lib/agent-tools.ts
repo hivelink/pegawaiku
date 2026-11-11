@@ -3,6 +3,9 @@ import type { ToolDef } from "./llm";
 import { extractText } from "./extract";
 import { DOMAIN_TOOL_DEFS, runDomainTool } from "./domain-tools";
 import { BUILTIN_CAP_DEFS, ALWAYS_ON_CAPS, REQUEST_CAPABILITY_DEF, runBuiltinCap, runHttpCap, validateHttpSpec, type HttpSpec } from "./capabilities";
+import { CREATIVE_TOOL_DEFS, runCreativeTool } from "./creative-tools";
+import { ASSISTANT_TOOL_DEFS, runAssistantTool } from "./assistant-tools";
+import { putToDrive } from "./drive-util";
 
 /**
  * Tool yang bisa dipanggil pegawai AI saat bekerja.
@@ -24,6 +27,8 @@ export type ToolCtx = {
 export const TOOL_DEFS: Record<string, ToolDef> = {
   ...DOMAIN_TOOL_DEFS,
   ...BUILTIN_CAP_DEFS,
+  ...CREATIVE_TOOL_DEFS,
+  ...ASSISTANT_TOOL_DEFS,
   request_capability: REQUEST_CAPABILITY_DEF,
   web_search: {
     name: "web_search",
@@ -128,7 +133,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           return (await runBuiltinCap(name, input, ctx)) ?? `Tool ${name} tidak dikenal.`;
         }
         if (ctx.httpCaps?.[name]) return await runHttpCap(ctx.httpCaps[name], input, ctx.keys);
-        const r = await runDomainTool(name, input, ctx.keys);
+        const r = (await runCreativeTool(name, input, ctx)) ?? (await runAssistantTool(name, input, ctx)) ?? (await runDomainTool(name, input, ctx.keys));
         return r ?? `Tool ${name} tidak dikenal.`;
       }
     }
@@ -258,16 +263,6 @@ async function keywordResearch(keyword: string, country: string, ctx: ToolCtx): 
     out.push("Catatan: volume pencarian & SERP tidak tersedia tanpa kunci SerpApi (Pengaturan → Kunci API). Beri perkiraan relatif (tinggi/sedang/rendah).");
   }
   return out.join("\n\n");
-}
-
-async function putToDrive(ctx: ToolCtx, filename: string, bytes: Buffer, mime: string, kind: string): Promise<string> {
-  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `${ctx.projectId}/${Date.now()}-${safe}`;
-  const { error: upErr } = await ctx.supabase.storage.from("drive").upload(path, bytes, { contentType: mime });
-  if (upErr) throw new Error(upErr.message);
-  const { error } = await ctx.supabase.from("files").insert({ project_id: ctx.projectId, owner_id: ctx.userId, title: safe, storage_path: path, mime_type: mime, size_bytes: bytes.length, kind });
-  if (error) throw new Error(error.message);
-  return safe;
 }
 
 async function voiceGenerate(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
