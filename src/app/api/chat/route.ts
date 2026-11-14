@@ -69,6 +69,7 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
     case "remember": return "🧠 Mengingat kebiasaan Anda";
     case "propose_mission": return `🤖 Mengusulkan misi otomatis: ${input.title}`;
     case "consult_agent": return `📘 Membuka panduan kerja ${input.agent}`;
+    case "network_overview": return "🗺 Membaca peta jaringan";
     default:
       if (/^(ipr_vogel|esp_quick|srp_quick|pcp_quick|oilfield_convert)$/.test(name)) return `🧮 Menghitung (${name})`;
       if (/^(subnet_calc|dns_lookup|http_check)$/.test(name)) return `🌐 Cek jaringan (${name})`;

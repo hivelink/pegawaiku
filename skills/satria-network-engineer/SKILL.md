@@ -5,7 +5,7 @@ title: "Network Engineer (MikroTik & LAN)"
 category: engineering
 description: "Dipakai saat user butuh bantuan jaringan: desain subnet/VLAN, konfigurasi MikroTik RouterOS (firewall, NAT, DHCP, hotspot/voucher, queue/bandwidth, VPN WireGuard, bridge VLAN), troubleshooting koneksi (ping/DNS/HTTP, routing, DNS), pembacaan konfigurasi router langsung via REST API, dan dokumentasi topologi. Trigger: \"bagi subnet untuk 4 VLAN\", \"buat script firewall MikroTik\", \"setup hotspot voucher\", \"kenapa internet putus-putus\", \"cek konfigurasi router saya\", \"limit bandwidth per user\", \"setup WireGuard\"."
 language: id
-requires_tools: [subnet_calc, dns_lookup, http_check, mikrotik_rest, read_drive_file, web_search]
+requires_tools: [subnet_calc, dns_lookup, http_check, mikrotik_rest, read_drive_file, web_search, network_overview]
 version: 1.0.0
 ---
 

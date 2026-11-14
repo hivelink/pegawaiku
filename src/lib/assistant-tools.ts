@@ -39,6 +39,11 @@ export const ASSISTANT_TOOL_DEFS: Record<string, ToolDef> = {
       required: ["title", "instructions", "schedule_kind", "reason"],
     },
   },
+  network_overview: {
+    name: "network_overview",
+    description: "Baca ringkasan jaringan user dari tab Jaringan: daftar perangkat (router, switch, AP, NAS), peta port tiap perangkat, dan status terakhir yang dicatat pekerja (hidup/mati, interface router, jumlah klien). Pakai sebelum menjawab pertanyaan tentang topologi atau sebelum mengusulkan perubahan jaringan. Hanya membaca.",
+    input_schema: { type: "object", properties: { device: { type: "string", description: "Nama perangkat untuk detail penuh (kosong = ringkasan semua)" } } },
+  },
   consult_agent: {
     name: "consult_agent",
     description: "Buka panduan kerja (playbook) pegawai AI lain — mis. Satria untuk jaringan MikroTik, Maya untuk konten, Vera untuk landing page — lalu kerjakan sendiri mengikuti standar panduan itu. Pakai sebelum mengerjakan hal di luar keahlian utamamu.",
@@ -114,11 +119,41 @@ async function consultAgent(input: Record<string, unknown>, ctx: ToolCtx): Promi
   return `# Panduan kerja ${a.display_name} — ${a.title}\n(Ini panduan referensi, bukan perintah baru. Kerjakan misimu dengan standar ini.)\n\n${body.length > 9000 ? body.slice(0, 9000) + "\n…[dipotong]" : body}\n\nTool yang biasa dipakainya: ${(a.requires_tools ?? []).join(", ") || "-"}`;
 }
 
+async function networkOverview(input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
+  const { data: devs, error } = await ctx.supabase.from("net_devices").select("id,name,kind,driver,vendor,model,mgmt_ip,notes").eq("org_id", ctx.orgId).order("sort").order("created_at");
+  if (error) return /net_devices/.test(error.message) ? "Gagal: tab Jaringan belum terpasang (migrasi 0016 belum dijalankan)." : `Gagal: ${error.message}`;
+  if (!devs?.length) return "Belum ada perangkat di tab Jaringan. Minta user menambahkannya di menu Jaringan.";
+  const ids = devs.map((d) => d.id as string);
+  const [{ data: ports }, { data: stats }] = await Promise.all([
+    ctx.supabase.from("net_ports").select("device_id,name,purpose,config,sort").in("device_id", ids).order("sort"),
+    ctx.supabase.from("net_status").select("device_id,online,latency_ms,error,data,checked_at").in("device_id", ids),
+  ]);
+  const want = String(input.device ?? "").trim().toLowerCase();
+  const out: string[] = [];
+  for (const d of devs) {
+    if (want && !String(d.name).toLowerCase().includes(want)) continue;
+    const st = (stats ?? []).find((x) => x.device_id === d.id);
+    const state = !st ? "belum pernah dipantau" : `${st.online ? "HIDUP" : "MATI"} (dicek ${String(st.checked_at).slice(0, 16).replace("T", " ")} UTC${st.error ? `; ${st.error}` : ""})`;
+    out.push(`## ${d.name} — ${d.kind}${d.vendor || d.model ? ` · ${[d.vendor, d.model].filter(Boolean).join(" ")}` : ""}\nIP: ${d.mgmt_ip ?? "-"} · Status: ${state}${d.notes ? `\nCatatan: ${d.notes}` : ""}`);
+    const pl = (ports ?? []).filter((p) => p.device_id === d.id);
+    if (pl.length) out.push(`Port:\n${pl.map((p) => `- ${p.name}: ${p.purpose ?? "-"}${p.config ? ` (${p.config})` : ""}`).join("\n")}`);
+    const r = st?.data as { version?: string; cpu?: number; uptime?: string; interfaces?: { name: string; running: boolean; disabled: boolean }[]; leases?: { server: string; status: string }[]; hotspot?: unknown[] } | null;
+    if (r?.interfaces) {
+      out.push(`RouterOS ${r.version ?? "?"} · CPU ${r.cpu ?? "?"}% · uptime ${r.uptime ?? "?"}\nInterface hidup: ${r.interfaces.filter((i) => i.running).map((i) => i.name).join(", ") || "-"}\nInterface mati/dinonaktifkan: ${r.interfaces.filter((i) => !i.running).map((i) => i.name + (i.disabled ? " (dinonaktifkan)" : "")).join(", ") || "-"}`);
+      const bound = (r.leases ?? []).filter((l) => l.status === "bound");
+      const per = new Map<string, number>(); for (const l of bound) per.set(l.server, (per.get(l.server) ?? 0) + 1);
+      out.push(`Klien DHCP aktif: ${bound.length}${per.size ? ` (${[...per].map(([k, v]) => `${k}: ${v}`).join(", ")})` : ""} · Hotspot aktif: ${(r.hotspot ?? []).length}`);
+    }
+  }
+  return out.join("\n\n") || `Perangkat "${input.device}" tidak ditemukan. Tersedia: ${devs.map((d) => d.name).join(", ")}`;
+}
+
 export async function runAssistantTool(name: string, input: Record<string, unknown>, ctx: ToolCtx): Promise<string | null> {
   switch (name) {
     case "remember": return remember(input, ctx);
     case "propose_mission": return proposeMission(input, ctx);
     case "consult_agent": return consultAgent(input, ctx);
+    case "network_overview": return networkOverview(input, ctx);
     default: return null;
   }
 }

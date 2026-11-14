@@ -2,12 +2,13 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Users, HardDrive, KanbanSquare, CreditCard, FolderOpen, Folder, Settings, Bot, MessagesSquare, ChevronDown, ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { Home, Users, HardDrive, KanbanSquare, CreditCard, FolderOpen, Folder, Settings, Bot, MessagesSquare, ChevronDown, ChevronRight, Loader2, Sparkles, Network } from "lucide-react";
 import { switchProject } from "./actions";
 
 const TOP = [
   { href: "/app", label: "Home", icon: Home, exact: true },
   { href: "/app/asisten", label: "Asisten", icon: Sparkles },
+  { href: "/app/jaringan", label: "Jaringan", icon: Network },
   { href: "/app/projects", label: "Project", icon: Folder },
   { href: "/app/agent", label: "Agent", icon: Users },
   { href: "/app/drive", label: "Drive", icon: HardDrive, exact: true },

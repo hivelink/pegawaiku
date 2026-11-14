@@ -11,7 +11,7 @@ export type Risk = "safe" | "write" | "sensitive";
 
 const SAFE = new Set([
   "web_search", "web_fetch", "read_drive_file", "view_image", "keyword_research", "list_tasks", "list_conversations", "read_conversation",
-  "subnet_calc", "dns_lookup", "http_check", "consult_agent",
+  "subnet_calc", "dns_lookup", "http_check", "consult_agent", "network_overview",
   "oilfield_convert", "ipr_vogel", "esp_quick", "srp_quick", "pcp_quick",
 ]);
 const WRITE = new Set([

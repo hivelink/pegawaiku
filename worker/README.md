@@ -93,6 +93,16 @@ Agar asisten bisa **mengubah** pengaturan (setelah Anda menyetujui tiap perubaha
 
 Switch Ruijie dan HSAirPo tidak punya API resmi, jadi tidak dikendalikan pekerja. Simpan dokumentasi port dan VLAN-nya di Drive project; misi "Cek kesehatan jaringan" membandingkannya dengan keadaan router.
 
+## Tab Jaringan
+
+Pekerja yang sama mengisi tab **Jaringan** di aplikasi (butuh migrasi `0016_network.sql`):
+
+- **Router MikroTik**: tiap menit membaca resource, interface beserta laju unduh/unggah, lease DHCP, dan pengguna hotspot. Pemantauan hanya memakai `GET`.
+- **Switch, AP, NAS, NVR**: tidak punya API, jadi dicek hidup/matinya lewat koneksi TCP ke port manajemennya, ditambah tanda "terlihat router" dari tabel ARP. Pengaturannya tetap lewat halaman perangkat masing-masing.
+- **Perintah dari web** (hanya owner/admin): backup, hidupkan/matikan interface, tetapkan alamat DHCP, putuskan pengguna hotspot. Daftarnya tertutup; pekerja menolak jenis lain. Mematikan interface selalu didahului backup, dan dibatalkan bila backup gagal. Perintah yang menunggu lebih dari 10 menit tidak dijalankan.
+
+Untuk perintah, user REST di router butuh policy `write` (dan biasanya `policy,sensitive` untuk backup). Dengan user hanya-baca, pemantauan tetap berjalan dan perintah gagal dengan pesan dari router.
+
 ## 5. Persetujuan lewat Telegram (opsional)
 
 1. Buat bot lewat **@BotFather**, salin token-nya.

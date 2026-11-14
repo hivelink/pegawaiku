@@ -54,6 +54,8 @@ src/app/api/drive/upload   unggah file ke Storage
 src/lib/context.ts         user/org/project aktif (cookie pk_org, pk_project)
 src/lib/autopilot/         mesin Asisten Otonom: jadwal, klasifikasi risiko, runner, penyimpanan, pengaman router
 src/app/app/asisten/       halaman misi, persetujuan, riwayat, memori
+src/lib/network/           pemantau jaringan (MikroTik REST, cek hidup switch/AP) + perintah router
+src/app/app/jaringan/      tab Jaringan: perangkat, peta port, status, pengaturan router
 worker/                    pekerja untuk NAS/server (Docker) + panduan
 tests/                     uji mesin Asisten (npm test)
 src/lib/supabase/          klien browser, server, proxy (auth guard)

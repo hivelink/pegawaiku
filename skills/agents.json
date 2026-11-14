@@ -50,7 +50,8 @@
         "mikrotik_rest",
         "subnet_calc",
         "dns_lookup",
-        "http_check"
+        "http_check",
+        "network_overview"
       ],
       "version": "1.0.0",
       "path": "skills/arka-asisten-otonom/SKILL.md",
@@ -404,7 +405,8 @@
         "http_check",
         "mikrotik_rest",
         "read_drive_file",
-        "web_search"
+        "web_search",
+        "network_overview"
       ],
       "version": "1.0.0",
       "path": "skills/satria-network-engineer/SKILL.md",

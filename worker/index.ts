@@ -12,6 +12,8 @@ import { SupabaseStore } from "../src/lib/autopilot/supabase-store";
 import { buildEnv } from "../src/lib/autopilot/context";
 import { tick } from "../src/lib/autopilot/engine";
 import { runTelegramBot } from "../src/lib/autopilot/telegram-bot";
+import { runNetworkLoop } from "../src/lib/network/monitor";
+import { tcpProbe } from "../src/lib/network/probe";
 
 const VERSION = "1.0.0";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
@@ -39,6 +41,8 @@ const sleep = (ms: number) => new Promise<void>((r) => { const t = setTimeout(r,
 async function main() {
   log(`pekerja "${name}" v${VERSION} mulai · organisasi: ${orgId ?? "semua"} · cek tiap ${pollMs / 1000} dtk`);
   void runTelegramBot(sb, { orgId, signal: stop.signal, log });
+  // pemantau jaringan: status perangkat tiap menit + perintah router dari tab Jaringan
+  void runNetworkLoop({ sb, probe: tcpProbe, orgId, log }, { signal: stop.signal, everyMs: (Number(process.env.NETWORK_MONITOR_SECONDS) || 60) * 1000 });
   let failures = 0;
   while (!stop.signal.aborted) {
     try {

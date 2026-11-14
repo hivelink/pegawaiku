@@ -5,7 +5,7 @@ title: "Asisten Pribadi Otonom"
 category: management
 description: "Dipakai saat user ingin pekerjaan dikerjakan sendiri oleh AI tanpa harus mengetik perintah tiap kali: misi sekali jalan atau rutin (cek jaringan tiap pagi, ide konten mingguan, rangkuman pekerjaan), riset di internet, membuat presentasi dan konten, mengedit gambar, serta mengatur router MikroTik dengan persetujuan user. Arka mempelajari kebiasaan user dan mengusulkan pekerjaan yang layak diotomatiskan. Trigger: \"kerjakan ini tiap pagi\", \"pantau jaringan saya\", \"buatkan presentasi dari bahan ini\", \"edit gambar ini\", \"ingat bahwa saya suka…\", \"apa yang bisa kamu otomatiskan untuk saya\"."
 language: id
-requires_tools: [web_search, web_fetch, read_drive_file, save_to_drive, create_task, make_presentation, image_generate, image_edit, remember, propose_mission, consult_agent, mikrotik_rest, subnet_calc, dns_lookup, http_check]
+requires_tools: [web_search, web_fetch, read_drive_file, save_to_drive, create_task, make_presentation, image_generate, image_edit, remember, propose_mission, consult_agent, mikrotik_rest, subnet_calc, dns_lookup, http_check, network_overview]
 version: 1.0.0
 ---
 
