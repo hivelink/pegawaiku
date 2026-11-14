@@ -38,7 +38,11 @@ test("konteks: prompt, tool, dan percakapan dirakit untuk Arka", async () => {
   assert.match(env.system, /Satria — Network Engineer/);
   assert.match(env.brief, /MISI: Cek jaringan/); assert.match(env.brief, /Periksa router\./); assert.match(env.brief, /Asia\/Jakarta/);
   const names = env.tools.map((t) => t.name);
-  for (const t of ["web_search", "mikrotik_rest", "make_presentation", "image_edit", "image_generate", "remember", "propose_mission", "consult_agent", "ask_user", "view_image", "save_to_drive"]) assert.ok(names.includes(t), `tool ${t} harus tersedia`);
+  for (const t of ["web_search", "mikrotik_rest", "make_presentation", "image_edit", "image_generate", "remember", "consult_agent", "ask_user", "view_image", "save_to_drive"]) assert.ok(names.includes(t), `tool ${t} harus tersedia`);
+  // misi kerja tidak boleh "menjadwalkan dirinya sendiri" — walau agent-nya mendaftarkan propose_mission
+  assert.ok(!names.includes("propose_mission"), "propose_mission hanya untuk misi belajar kebiasaan");
+  assert.match(env.brief, /jadwalnya sudah diatur sistem\. Kerjakan isinya SEKARANG/);
+  assert.match(env.system, /Laporan hanya boleh berisi hal yang benar-benar terjadi/);
   assert.ok(!names.includes("delegate_agent"));
   assert.ok(!names.includes("delete_drive_file"), "kemampuan yang belum disetujui admin tidak boleh muncul");
   assert.equal(new Set(names).size, names.length, "nama tool tidak boleh ganda (API menolak)");
@@ -197,4 +201,68 @@ test("memori: rahasia ditolak, kalimat biasa yang menyebut kata serupa tetap bol
   const tryRemember = async (content: string) => (await env.runTool({ id: "x", name: "remember", input: { kind: "fact", content } })).output;
   for (const secret of ["password router adalah hunter2 rahasia", "Kata sandi WiFi tamu: tamu12345", "API key Tavily = tvly-abcdef", "kunci sk-ant-api03-abcdefghijklmnop", "Nomor kartu user 4111111111111111 untuk langganan"]) assert.match(await tryRemember(secret), /^Gagal: terlihat seperti rahasia/, secret);
   for (const fine of ["User ingin laporan jaringan memakai tabel ringkas.", "Hotspot tamu memakai voucher, bukan kata sandi bersama.", "User lebih suka presentasi berlatar gelap dengan sedikit teks."]) assert.match(await tryRemember(fine), /^Diingat/, fine);
+});
+
+test("model: pilihan misi → rekomendasi agent → bawaan pekerja → model chat; model tanpa kunci dilewati", async () => {
+  const { modelCandidates, recommendedModel, AGENT_MODEL_RECS, MODEL_TIERS } = await import("../src/lib/autopilot/models");
+  assert.equal(recommendedModel("satria-network-engineer").model, MODEL_TIERS.hemat);
+  assert.equal(recommendedModel("maya-ebook-content-writer").model, MODEL_TIERS.standar);
+  assert.equal(recommendedModel("agent-tak-dikenal").tier, "standar");
+  assert.equal(recommendedModel(null).tier, "standar");
+  // setiap rekomendasi merujuk agent yang benar-benar ada (folder skills/ atau dipasang lewat migrasi)
+  const fs = await import("node:fs");
+  const sql = fs.readdirSync("supabase/migrations").map((f) => fs.readFileSync(`supabase/migrations/${f}`, "utf8")).join("\n");
+  for (const slug of Object.keys(AGENT_MODEL_RECS)) assert.ok(fs.existsSync(`skills/${slug}/SKILL.md`) || sql.includes(`$q$${slug}$q$`), `agent ${slug} tidak ada`);
+  assert.deepEqual(modelCandidates({ missionModel: "google/gemini-2.0-flash", agentSlug: "satria-network-engineer", workerDefault: "anthropic/claude-sonnet-5-5", orgChatModel: "openai/gpt-4.1-mini", fallback: "x/y" }).map((c) => `${c.source}:${c.model}`),
+    ["misi:google/gemini-2.0-flash", "rekomendasi agent:anthropic/claude-haiku-5-5", "bawaan pekerja:anthropic/claude-sonnet-5-5", "model chat organisasi:openai/gpt-4.1-mini"]);
+  assert.equal(modelCandidates({ agentSlug: "maya-ebook-content-writer", workerDefault: "anthropic/claude-sonnet-5-5", fallback: "x/y" }).length, 2, "tanpa duplikat");
+
+  const prev = process.env.AUTOPILOT_MODEL;
+  try {
+    process.env.AUTOPILOT_MODEL = "anthropic/claude-sonnet-5-5";
+    // Satria tanpa pilihan misi → Haiku (kunci anthropic ada)
+    let env = await buildEnv(db().sb, run(), mission({ agent_id: "ag-satria", conversation_id: "c" }));
+    assert.equal(env.modelLabel, "anthropic/claude-haiku-5-5 (rekomendasi agent)");
+    // pilihan misi menang
+    env = await buildEnv(db().sb, run(), mission({ agent_id: "ag-satria", conversation_id: "c", model: "google/gemini-2.0-flash" }));
+    assert.equal(env.modelLabel, "google/gemini-2.0-flash (misi)");
+    // kunci anthropic tidak ada → rekomendasi & bawaan dilewati, jatuh ke model chat organisasi
+    const f = db(); f.fixtures.org_api_keys = [{ org_id: "org-1", provider: "openai", secret: "sk-o" }];
+    (f.fixtures.organizations[0] as Row).chat_model = "openai/gpt-4.1-mini";
+    env = await buildEnv(f.sb, run(), mission({ agent_id: "ag-satria", conversation_id: "c" }));
+    assert.equal(env.modelLabel, "openai/gpt-4.1-mini (model chat organisasi)");
+  } finally {
+    if (prev === undefined) delete process.env.AUTOPILOT_MODEL; else process.env.AUTOPILOT_MODEL = prev;
+  }
+});
+
+test("model: model pensiun / saldo habis → pindah ke model berikutnya, pesan asli tercatat", async () => {
+  const f = db();
+  f.fixtures.org_api_keys = [{ org_id: "org-1", provider: "google", secret: "AIza-uji" }, { org_id: "org-1", provider: "openai", secret: "sk-o" }];
+  Object.assign(f.fixtures.organizations[0], { chat_model: "openai/gpt-4.1-mini", fallback_model: "google/gemini-2.0-flash" });
+  const hits: string[] = [];
+  globalThis.fetch = (async (url: string | URL) => {
+    const u = String(url); hits.push(u.replace(/^https:\/\/([^/]+).*$/, "$1"));
+    if (u.includes("generativelanguage.googleapis.com")) return new Response('[{"error":{"code":404,"message":"This model models/gemini-2.0-flash is no longer available."}}]', { status: 404 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: "laporan ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 } }), { status: 200 });
+  }) as typeof fetch;
+  const env = await buildEnv(f.sb, run(), mission({ agent_id: "ag-satria", conversation_id: "c", model: "google/gemini-2.0-flash" }));
+  const notes: string[] = []; env.onEvent = (l) => notes.push(l);
+  assert.equal(env.modelLabel, "google/gemini-2.0-flash (misi)");
+  const step = await env.llm([{ role: "user", content: "cek" }], env.tools, 100, new AbortController().signal);
+  assert.equal(step.text, "laporan ok");
+  assert.deepEqual(hits, ["generativelanguage.googleapis.com", "api.openai.com"]);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /gemini-2\.0-flash.*no longer available.*beralih ke openai\/gpt-4\.1-mini \(model chat organisasi\)/);
+  // panggilan berikutnya langsung ke model yang berhasil, tidak mencoba model pensiun lagi
+  await env.llm([{ role: "user", content: "lagi" }], env.tools, 100, new AbortController().signal);
+  assert.deepEqual(hits.slice(2), ["api.openai.com"]);
+
+  // galat yang bukan soal saldo/model (mis. 500) tidak memindahkan model — langsung dilaporkan
+  hits.length = 0;
+  globalThis.fetch = (async (url: string | URL) => { hits.push(String(url)); return new Response('{"error":{"message":"server error"}}', { status: 500 }); }) as typeof fetch;
+  const env2 = await buildEnv(f.sb, run(), mission({ agent_id: "ag-satria", conversation_id: "c", model: "openai/gpt-4.1-mini" }));
+  const notes2: string[] = []; env2.onEvent = (l) => notes2.push(l);
+  await assert.rejects(env2.llm([{ role: "user", content: "cek" }], env2.tools, 100, new AbortController().signal), /HTTP 500: server error/);
+  assert.equal(hits.length, 1); assert.equal(notes2.length, 0);
 });

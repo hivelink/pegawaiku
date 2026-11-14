@@ -103,13 +103,14 @@ export async function monitorOnce(d: MonitorDeps): Promise<number> {
   for (const [orgId, list] of byOrg) {
     // router dulu: tabel ARP-nya dipakai sebagai tanda "terlihat" untuk perangkat lain
     let arp: Set<string> | null = null;
+    let routerUp: RouterCfg | null = null;
+    const cfg = list.some((x) => x.driver === "mikrotik") ? await orgKeys(d.sb, orgId) : null;
     for (const dev of list.filter((x) => x.driver === "mikrotik")) {
-      const cfg = await orgKeys(d.sb, orgId);
       if (!cfg) { await saveStatus(d, dev, { online: false, latency_ms: null, seen_by_router: null, data: null, error: "Kunci mikrotik belum diisi (Pengaturan → Kunci API)." }); continue; }
       const t0 = Date.now();
       try {
         const r = await readRouter(cfg, dev.id, now);
-        arp = r.arp;
+        arp = r.arp; routerUp = cfg;
         await saveStatus(d, dev, { online: true, latency_ms: Date.now() - t0, seen_by_router: null, data: r.data, error: null });
       } catch (e) {
         await saveStatus(d, dev, { online: false, latency_ms: null, seen_by_router: null, data: null, error: (e as Error).message });
@@ -118,12 +119,43 @@ export async function monitorOnce(d: MonitorDeps): Promise<number> {
     await Promise.all(list.filter((x) => x.driver !== "mikrotik").map(async (dev) => {
       if (!dev.mgmt_ip) { await saveStatus(d, dev, { online: false, latency_ms: null, seen_by_router: null, data: null, error: "Alamat IP belum diisi." }); return; }
       const p = await d.probe(dev.mgmt_ip, dev.mgmt_port || 80, 3000);
+      if (p.ok) { await saveStatus(d, dev, { online: true, latency_ms: p.ms, seen_by_router: arp ? arp.has(dev.mgmt_ip) : null, data: null, error: null }); return; }
+      // Pekerja tidak bisa menjangkau perangkat (mis. firewall antar-VLAN): minta router yang melakukan ping.
+      // Router berada di jaringan yang sama dengan perangkat, dan ping-nya sekaligus mengisi tabel ARP router.
+      const rp = routerUp ? await routerPing(routerUp, dev.mgmt_ip) : null;
+      if (rp?.ok) { await saveStatus(d, dev, { online: true, latency_ms: rp.ms, seen_by_router: true, data: null, error: null }); return; }
       const seen = arp ? arp.has(dev.mgmt_ip) : null;
-      // hidup bila port manajemen menjawab, atau router masih melihat alamatnya (port web bisa saja dimatikan)
-      await saveStatus(d, dev, { online: p.ok || seen === true, latency_ms: p.ok ? p.ms : null, seen_by_router: seen, data: null, error: p.ok ? null : seen ? `Port ${dev.mgmt_port} tidak menjawab, tetapi router masih melihat perangkat ini.` : p.error ?? "tidak menjawab" });
+      const why = rp?.error
+        ? `Pekerja tidak bisa menjangkau port ${dev.mgmt_port}, dan router tidak bisa ping: ${rp.error}`
+        : rp ? "Tidak menjawab ping dari router." : p.error ?? "tidak menjawab";
+      // ping bisa saja diblokir perangkatnya sendiri: alamat yang masih ada di ARP router tetap dianggap hidup
+      await saveStatus(d, dev, { online: seen === true, latency_ms: null, seen_by_router: seen, data: null, error: seen ? `${why} Router masih melihat perangkat ini.` : why });
     }));
   }
   return devices.length;
+}
+
+/** "1ms", "450us", "1ms234us" → milidetik. */
+export function parseRtt(s: string | undefined): number | null {
+  if (!s) return null;
+  let ms = 0, hit = false;
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)(ms|us|s)/g)) { hit = true; ms += Number(m[1]) * (m[2] === "s" ? 1000 : m[2] === "ms" ? 1 : 0.001); }
+  return hit ? Math.max(1, Math.round(ms)) : null;
+}
+
+/** Ping dari router (RouterOS /ping lewat REST; butuh policy "test" pada grup user). Tidak mengubah konfigurasi. */
+export async function routerPing(cfg: RouterCfg, address: string): Promise<{ ok: boolean; ms: number | null; error?: string }> {
+  try {
+    const rows = await routerRest<Record<string, string>[]>(cfg, "/ping", { method: "POST", body: { address, count: "2" }, timeoutMs: 12_000 });
+    const list = Array.isArray(rows) ? rows : [];
+    const last = list[list.length - 1] ?? {};
+    const received = Number(last.received ?? list.filter((r) => r.time).length);
+    const ms = parseRtt(last["avg-rtt"]) ?? parseRtt(list.find((r) => r.time)?.time);
+    return { ok: received > 0, ms: received > 0 ? ms : null };
+  } catch (e) {
+    const msg = (e as Error).message;
+    return { ok: false, ms: null, error: /not enough permissions/.test(msg) ? 'user router belum punya izin "test" untuk ping (tambahkan policy test pada grupnya).' : msg.slice(0, 160) };
+  }
 }
 
 // ---------------- Perintah dari web ----------------

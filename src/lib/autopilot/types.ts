@@ -24,6 +24,8 @@ export type Mission = {
   schedule: Schedule;
   tz: string;
   approval_mode: ApprovalMode;
+  /** model khusus untuk misi ini ("provider/model"); null = rekomendasi agent. Kolom dari migrasi 0017 (bisa belum ada). */
+  model?: string | null;
   status: MissionStatus;
   source: "user" | "assistant";
   reason: string | null;
@@ -126,6 +128,10 @@ export type RunEnv = {
   tools: ToolDef[];
   brief: string;
   approvalMode: ApprovalMode;
+  /** model yang dipakai run ini beserta asal pilihannya, untuk jurnal */
+  modelLabel?: string;
+  /** diisi runner: catat kejadian ke jurnal run (mis. pindah model karena saldo habis) */
+  onEvent?: (label: string) => void;
   /** kunci tool yang merupakan aksi HTTP organisasi (selalu dianggap sensitif) */
   httpCapKeys: Set<string>;
   llm(messages: ChatMsg[], tools: ToolDef[], maxTokens: number, signal: AbortSignal): Promise<LlmStep>;
