@@ -1,0 +1,20 @@
+# Jalankan dari akar repo:  docker compose -f worker/docker-compose.yml up -d --build
+# Di Synology: Container Manager → Project → Create → pilih folder repo ini → pakai file compose ini.
+services:
+  asisten:
+    build:
+      context: ..
+      dockerfile: worker/Dockerfile
+    container_name: pegawaiku-asisten
+    restart: unless-stopped
+    env_file: .env            # salin worker/env.example menjadi worker/.env lalu isi
+    # Router memakai sertifikat buatan sendiri (https)? Ekspor sertifikatnya, taruh di worker/certs/router.crt,
+    # lalu aktifkan dua bagian di bawah agar koneksi tetap terverifikasi.
+    # environment:
+    #   NODE_EXTRA_CA_CERTS: /certs/router.crt
+    # volumes:
+    #   - ./certs:/certs:ro
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "3"

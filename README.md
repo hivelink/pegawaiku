@@ -13,6 +13,7 @@ Stack: **Next.js 16 (App Router) · Tailwind 4 · Supabase (Postgres, Auth, Stor
 - Drive per project (Supabase Storage bucket `drive`, signed URL).
 - Task board kanban sederhana (antre → berjalan → review → selesai / terhambat).
 - Billing: saldo kredit, riwayat transaksi, redeem voucher. Payment gateway belum dipasang (lihat Roadmap).
+- **Asisten Otonom** (menu Asisten): beri satu tujuan, lalu pegawai AI mengerjakannya sendiri — sekali jalan atau terjadwal — lewat pekerja di NAS/server rumah. Aksi berisiko (mengubah router, menerbitkan, menghapus) selalu menunggu persetujuan Anda di aplikasi atau Telegram. Asisten mempelajari kebiasaan Anda dan mengusulkan pekerjaan rutin. Lihat `worker/README.md`.
 
 ## Menjalankan secara lokal
 
@@ -51,6 +52,12 @@ src/app/app/               area aplikasi (layout sidebar, home, agent, chat, dri
 src/app/api/chat           streaming Claude + potong kredit
 src/app/api/drive/upload   unggah file ke Storage
 src/lib/context.ts         user/org/project aktif (cookie pk_org, pk_project)
+src/lib/autopilot/         mesin Asisten Otonom: jadwal, klasifikasi risiko, runner, penyimpanan, pengaman router
+src/app/app/asisten/       halaman misi, persetujuan, riwayat, memori
+src/lib/network/           pemantau jaringan (MikroTik REST, cek hidup switch/AP) + perintah router
+src/app/app/jaringan/      tab Jaringan: perangkat, peta port, status, pengaturan router
+worker/                    pekerja untuk NAS/server (Docker) + panduan
+tests/                     uji mesin Asisten (npm test)
 src/lib/supabase/          klien browser, server, proxy (auth guard)
 public/brand/              logo (mark, horizontal light/dark)
 public/agents/             avatar agent

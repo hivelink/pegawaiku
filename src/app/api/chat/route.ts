@@ -8,6 +8,7 @@ import { encodeChoice } from "@/lib/choices";
 import { TOOL_DEFS, runTool, viewImage, type ToolCtx } from "@/lib/agent-tools";
 import { BUILTIN_CAP_DEFS, ALWAYS_ON_CAPS, httpCapToolDef, type HttpSpec } from "@/lib/capabilities";
 import { parseMentions, shortName, type MentionAgent } from "@/lib/mentions";
+import { loadMemoryBlock } from "@/lib/autopilot/memory";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -16,7 +17,7 @@ const BASE_SYSTEM = `Kamu adalah pegawai AI di platform PegawaiKu. Jawab dalam B
 Ikuti deskripsi peran di bawah ini secara ketat.
 Kamu punya tool. Jika user menyebut bahan/materi/slide/PDF/dokumen/file yang mereka berikan, PANGGIL read_drive_file (tanpa argumen = daftar file; lalu baca filenya, lanjutkan dengan part 2,3,... bila panjang) — jangan minta user mengetik ulang. Pakai web_search/web_fetch untuk fakta terkini atau hal di luar pengetahuanmu; save_to_drive untuk hasil panjang; create_task bila user menyetujui rencana; learn_skill untuk menyimpan keahlian baru; image_generate/voice_generate bila diminta gambar/suara dan kuncinya tersedia.
 Jika diminta sesuatu di luar keahlian utamamu, jangan menolak: pelajari dulu dari internet (cari, baca 2-3 sumber), simpan dengan learn_skill, lalu kerjakan. Sebutkan sumbernya.
-Jangan mengklaim membuat gambar/video; kamu menghasilkan teks dan file teks.
+Kamu menghasilkan teks dan file. Gambar hanya lewat image_generate/image_edit dan presentasi (.pptx) hanya lewat make_presentation, bila tool itu tersedia; jangan mengklaim membuat gambar, video, atau presentasi tanpa tool-nya.
 Untuk dokumen panjang, simpan per bagian (save_to_drive mode "new" lalu "append"), jangan satu panggilan raksasa.
 Jika kamu TIDAK punya tool untuk melakukan permintaan user (mis. menghapus file Drive), JANGAN hanya menolak: panggil request_capability agar admin bisa menyetujui kemampuan itu, lalu jelaskan ke user bahwa permintaan sudah diajukan dan cara alternatif sementara.
 Aksi yang menghapus data (hapus file/tugas) wajib minta konfirmasi user dulu.
@@ -63,6 +64,12 @@ function toolLabel(name: string, input: Record<string, unknown>): string {
     case "list_conversations": return "💬 Melihat percakapan lain";
     case "read_conversation": return "💬 Membaca percakapan lain";
     case "mikrotik_rest": return `📡 MikroTik ${input.method ?? "GET"} ${input.path}`;
+    case "make_presentation": return `📊 Membuat presentasi: ${input.title}`;
+    case "image_edit": return "🖌 Mengedit gambar";
+    case "remember": return "🧠 Mengingat kebiasaan Anda";
+    case "propose_mission": return `🤖 Mengusulkan misi otomatis: ${input.title}`;
+    case "consult_agent": return `📘 Membuka panduan kerja ${input.agent}`;
+    case "network_overview": return "🗺 Membaca peta jaringan";
     default:
       if (/^(ipr_vogel|esp_quick|srp_quick|pcp_quick|oilfield_convert)$/.test(name)) return `🧮 Menghitung (${name})`;
       if (/^(subnet_calc|dns_lookup|http_check)$/.test(name)) return `🌐 Cek jaringan (${name})`;
@@ -179,6 +186,9 @@ export async function POST(req: Request) {
   const nameOf = (id: string | null | undefined) => (pool.find((a) => a.id === (id || ownerAgent.id))?.display_name ?? ownerAgent.display_name);
   const participantsTxt = [...participantIds].map((id) => { const a = pool.find((x) => x.id === id); return a ? `${a.display_name} (@${shortName(a.display_name)}, ${a.title ?? ""})` : null; }).filter(Boolean).join("; ");
 
+  // preferensi & kebiasaan user yang sudah dipelajari (kosong bila migrasi 0015 belum dijalankan)
+  const memoryBlock = await loadMemoryBlock(supabase, project.org_id);
+
   const brandCtx = [project.tagline && `Tagline: ${project.tagline}`, project.description && `Deskripsi: ${project.description}`, project.category && `Kategori: ${project.category}`, project.website && `Website: ${project.website}`, Object.keys(project.brand ?? {}).length ? `Brand: ${JSON.stringify(project.brand)}` : ""].filter(Boolean).join("\n");
 
   async function buildFor(agent: FullAgent, depth = 0) {
@@ -202,11 +212,12 @@ export async function POST(req: Request) {
       skills.length ? `\n=== SKILL TAMBAHAN ===\n${skills.map((s) => `## ${s.name}\n${s.instructions}`).join("\n\n")}` : "",
       capsReady ? `\n=== KEMAMPUAN YANG BISA DIMINTA (belum aktif) ===\n${Object.values(BUILTIN_CAP_DEFS).filter((d) => !enabledCaps.has(d.name) && !ALWAYS_ON_CAPS.has(d.name)).map((d) => `- ${d.name}: ${d.description.split(".")[0]}`).join("\n") || "(semua sudah aktif)"}\nJika permintaan user butuh salah satu di atas, panggil request_capability dengan capability_key tersebut.` : "",
       (knowledge ?? []).length ? `\n=== PENGETAHUAN YANG SUDAH KAMU PELAJARI ===\n${(knowledge ?? []).map((k) => `## ${k.title}\n${k.content}`).join("\n\n")}` : "",
+      memoryBlock,
     ].join("\n");
     const enabledKeys = new Set([
-      "web_search", "web_fetch", "save_to_drive", "read_drive_file", "create_task", "learn_skill", "keyword_research",
+      "web_search", "web_fetch", "save_to_drive", "read_drive_file", "create_task", "learn_skill", "keyword_research", "make_presentation",
       ...(ptools ?? []).map((t) => t.tool_key),
-      ...(keys.google ? ["image_generate"] : []),
+      ...(keys.google ? ["image_generate", "image_edit"] : []),
       ...(keys.elevenlabs ? ["voice_generate"] : []),
       ...(agent.requires_tools ?? []),
       ...skills.flatMap((s) => s.requires_tools ?? []),
