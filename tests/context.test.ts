@@ -235,3 +235,34 @@ test("model: pilihan misi → rekomendasi agent → bawaan pekerja → model cha
     if (prev === undefined) delete process.env.AUTOPILOT_MODEL; else process.env.AUTOPILOT_MODEL = prev;
   }
 });
+
+test("model: model pensiun / saldo habis → pindah ke model berikutnya, pesan asli tercatat", async () => {
+  const f = db();
+  f.fixtures.org_api_keys = [{ org_id: "org-1", provider: "google", secret: "AIza-uji" }, { org_id: "org-1", provider: "openai", secret: "sk-o" }];
+  Object.assign(f.fixtures.organizations[0], { chat_model: "openai/gpt-4.1-mini", fallback_model: "google/gemini-2.0-flash" });
+  const hits: string[] = [];
+  globalThis.fetch = (async (url: string | URL) => {
+    const u = String(url); hits.push(u.replace(/^https:\/\/([^/]+).*$/, "$1"));
+    if (u.includes("generativelanguage.googleapis.com")) return new Response('[{"error":{"code":404,"message":"This model models/gemini-2.0-flash is no longer available."}}]', { status: 404 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: "laporan ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 } }), { status: 200 });
+  }) as typeof fetch;
+  const env = await buildEnv(f.sb, run(), mission({ agent_id: "ag-satria", conversation_id: "c", model: "google/gemini-2.0-flash" }));
+  const notes: string[] = []; env.onEvent = (l) => notes.push(l);
+  assert.equal(env.modelLabel, "google/gemini-2.0-flash (misi)");
+  const step = await env.llm([{ role: "user", content: "cek" }], env.tools, 100, new AbortController().signal);
+  assert.equal(step.text, "laporan ok");
+  assert.deepEqual(hits, ["generativelanguage.googleapis.com", "api.openai.com"]);
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /gemini-2\.0-flash.*no longer available.*beralih ke openai\/gpt-4\.1-mini \(model chat organisasi\)/);
+  // panggilan berikutnya langsung ke model yang berhasil, tidak mencoba model pensiun lagi
+  await env.llm([{ role: "user", content: "lagi" }], env.tools, 100, new AbortController().signal);
+  assert.deepEqual(hits.slice(2), ["api.openai.com"]);
+
+  // galat yang bukan soal saldo/model (mis. 500) tidak memindahkan model — langsung dilaporkan
+  hits.length = 0;
+  globalThis.fetch = (async (url: string | URL) => { hits.push(String(url)); return new Response('{"error":{"message":"server error"}}', { status: 500 }); }) as typeof fetch;
+  const env2 = await buildEnv(f.sb, run(), mission({ agent_id: "ag-satria", conversation_id: "c", model: "openai/gpt-4.1-mini" }));
+  const notes2: string[] = []; env2.onEvent = (l) => notes2.push(l);
+  await assert.rejects(env2.llm([{ role: "user", content: "cek" }], env2.tools, 100, new AbortController().signal), /HTTP 500: server error/);
+  assert.equal(hits.length, 1); assert.equal(notes2.length, 0);
+});

@@ -13,6 +13,8 @@ import { modelCandidates } from "./models";
 export const ARKA_SLUG = "arka-asisten-otonom";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-5-5"; // sama dengan default chat (Pengaturan → Model AI)
 const BILLING_RE = /credit balance|too low|billing|insufficient|quota|exceeded your current|payment|purchase credits|invalid[ _-]?(x-)?api[ _-]?key|authentication|unauthorized|permission_denied|rate.?limit|too many requests|overloaded|\b(401|402|403|429|529)\b/i;
+/** model sudah pensiun / tidak dikenal penyedianya — layak pindah ke model berikutnya */
+const UNAVAILABLE_RE = /no longer available|model[_ ]not[_ ]found|not found for api version|does not exist|unknown model|\bHTTP 404\b|^404\b/i;
 const VISION = ["anthropic", "google", "openai"];
 
 export const AUTO_SYSTEM = `Kamu adalah pegawai AI di platform PegawaiKu dan sedang bekerja dalam MODE OTONOM: user tidak sedang menunggu di chat. Kamu menerima sebuah misi, mengerjakannya sampai tuntas dengan tool, lalu menulis laporan. Jawab dalam Bahasa Indonesia kecuali diminta lain.
@@ -105,15 +107,18 @@ export async function buildEnv(sb: SupabaseClient, run: Run, mission: Mission): 
     const apiKey = keys[keyProvider] ?? (keyProvider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined);
     return apiKey ? { keyProvider, model, apiKey, usesPlatformKey: keyProvider === "anthropic" && !keys.anthropic } : null;
   };
-  const candidates = modelCandidates({ missionModel: mission.model, agentSlug: agent.slug, workerDefault: process.env.AUTOPILOT_MODEL, orgChatModel: org.chat_model as string | null, fallback: DEFAULT_MODEL });
-  const picked = candidates.map((c) => ({ ...c, active: mk(c.model) })).find((c) => c.active);
-  const primary = picked?.active ?? null;
-  let fallback = org.fallback_model ? mk(String(org.fallback_model)) : null;
-  if (fallback && primary && fallback.keyProvider === primary.keyProvider && fallback.model === primary.model) fallback = null;
-  let active = primary ?? fallback;
-  if (!active) throw new Error("Belum ada kunci API model yang bisa dipakai. Isi Pengaturan → Kunci API (mis. anthropic) atau set ANTHROPIC_API_KEY di pekerja.");
-  const modelLabel = picked ? `${picked.model} (${picked.source})` : `${String(org.fallback_model)} (model cadangan)`;
-  let switched = false;
+  // Rantai model: kandidat yang kuncinya tersedia, lalu model cadangan organisasi. Bila satu model ditolak
+  // (saldo/kuota habis, kunci bermasalah, model sudah pensiun), run berpindah ke model berikutnya.
+  const chain: { label: string; active: Active }[] = [];
+  for (const c of [...modelCandidates({ missionModel: mission.model, agentSlug: agent.slug, workerDefault: process.env.AUTOPILOT_MODEL, orgChatModel: org.chat_model as string | null, fallback: DEFAULT_MODEL }),
+    ...(org.fallback_model ? [{ model: String(org.fallback_model), source: "model cadangan" }] : [])]) {
+    const a = mk(c.model);
+    if (a && !chain.some((x) => x.active.keyProvider === a.keyProvider && x.active.model === a.model)) chain.push({ label: `${c.model} (${c.source})`, active: a });
+  }
+  if (!chain.length) throw new Error("Belum ada kunci API model yang bisa dipakai. Isi Pengaturan → Kunci API (mis. anthropic) atau set ANTHROPIC_API_KEY di pekerja.");
+  let at = 0;
+  let active: Active = chain[0].active;
+  const modelLabel = chain[0].label;
 
   // ---- percakapan tempat laporan disimpan (satu per misi) ----
   let conversationId = mission.conversation_id;
@@ -189,7 +194,7 @@ export async function buildEnv(sb: SupabaseClient, run: Run, mission: Mission): 
   const tg = parseTelegram(keys.telegram);
   let backedUp = false;
 
-  return {
+  const envObj: RunEnv = {
     system, brief, tools: toolsFor(active), approvalMode: mission.approval_mode, httpCapKeys: new Set(Object.keys(httpCaps)), modelLabel,
 
     async llm(messages, _tools, maxTokens, signal) {
@@ -201,12 +206,17 @@ export async function buildEnv(sb: SupabaseClient, run: Run, mission: Mission): 
         const tl = _tools.length ? toolsFor(a) : [];
         return llmStep({ provider: a.keyProvider, model: a.model, apiKey: a.apiKey }, system, messages, tl, () => {}, maxTokens, signal);
       };
-      try { return await call(active!); }
-      catch (e) {
-        const msg = String((e as Error)?.message ?? e) + " " + String((e as { status?: number })?.status ?? "");
-        if (switched || !fallback || fallback === active || signal.aborted || !BILLING_RE.test(msg)) throw e;
-        switched = true; active = fallback; // model utama bermasalah (kredit/kuota/kunci) → pakai cadangan sampai run selesai
-        return await call(active);
+      const failures: string[] = [];
+      for (;;) {
+        try { return await call(active); }
+        catch (e) {
+          const msg = String((e as Error)?.message ?? e) + " " + String((e as { status?: number })?.status ?? "");
+          if (signal.aborted || !(BILLING_RE.test(msg) || UNAVAILABLE_RE.test(msg))) throw e;
+          failures.push(`${chain[at].label}: ${msg.trim().slice(0, 140)}`);
+          if (at + 1 >= chain.length) throw new Error(`Semua model gagal dipakai — ${failures.join(" | ")}`);
+          at++; active = chain[at].active; // pindah sampai run selesai; model yang gagal tidak dicoba lagi
+          envObj.onEvent?.(`Model ${failures[failures.length - 1].split(":")[0]} tidak bisa dipakai (${msg.trim().slice(0, 120)}) → beralih ke ${chain[at].label}`);
+        }
       }
     },
 
@@ -227,7 +237,7 @@ export async function buildEnv(sb: SupabaseClient, run: Run, mission: Mission): 
     },
 
     async account(inTok, outTok) {
-      if (!active!.usesPlatformKey) return 0;
+      if (!active.usesPlatformKey) return 0;
       const cost = creditCost(inTok, outTok);
       if (cost > 0) await sb.rpc("apply_credit", { p_org: mission.org_id, p_amount: -cost, p_kind: "usage", p_reference: run.id, p_note: `Asisten otonom — ${mission.title.slice(0, 60)}: ${inTok}+${outTok} token` });
       return cost;
@@ -242,4 +252,5 @@ export async function buildEnv(sb: SupabaseClient, run: Run, mission: Mission): 
 
     async notify(text, approvals) { if (tg) await notifyTelegram(tg, mission.title, text, approvals); },
   };
+  return envObj;
 }

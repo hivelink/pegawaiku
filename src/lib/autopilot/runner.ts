@@ -63,7 +63,8 @@ export async function executeRun(deps: RunnerDeps, run: Run, opts: ExecOpts = {}
     return "failed";
   }
 
-  const state: RunState = run.state ?? { messages: [{ role: "user", content: env.brief }], seen: {}, transcript: "" };
+  env.onEvent = (label) => { store.addEvent(run.id, "info", label).catch(() => {}); };
+  const state: RunState = run.state ??{ messages: [{ role: "user", content: env.brief }], seen: {}, transcript: "" };
   let steps = run.steps ?? 0;
   let inTok = 0, outTok = 0;
   let toolErrors = 0;

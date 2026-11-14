@@ -130,6 +130,8 @@ export type RunEnv = {
   approvalMode: ApprovalMode;
   /** model yang dipakai run ini beserta asal pilihannya, untuk jurnal */
   modelLabel?: string;
+  /** diisi runner: catat kejadian ke jurnal run (mis. pindah model karena saldo habis) */
+  onEvent?: (label: string) => void;
   /** kunci tool yang merupakan aksi HTTP organisasi (selalu dianggap sensitif) */
   httpCapKeys: Set<string>;
   llm(messages: ChatMsg[], tools: ToolDef[], maxTokens: number, signal: AbortSignal): Promise<LlmStep>;

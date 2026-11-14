@@ -135,7 +135,8 @@ async function openaiCompatStep(cfg: ProviderCfg, system: string, messages: Chat
   if (cfg.provider === "openrouter") { headers["HTTP-Referer"] = "https://pegawaiku.vercel.app"; headers["X-Title"] = "PegawaiKu"; }
   const r = await fetch(`${base}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal });
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error?.message ?? j.message ?? `HTTP ${r.status}`);
+  // Google (endpoint kompatibel OpenAI) mengirim galat sebagai larik: [{ error: { message } }]
+  if (!r.ok) { const e = Array.isArray(j) ? j[0] : j; throw new Error(`HTTP ${r.status}: ${e?.error?.message ?? e?.message ?? "tanpa pesan"}`); }
   const choice = j.choices?.[0];
   const text: string = choice?.message?.content ?? "";
   if (text) onText(text);
