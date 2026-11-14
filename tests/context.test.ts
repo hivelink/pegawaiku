@@ -38,7 +38,11 @@ test("konteks: prompt, tool, dan percakapan dirakit untuk Arka", async () => {
   assert.match(env.system, /Satria — Network Engineer/);
   assert.match(env.brief, /MISI: Cek jaringan/); assert.match(env.brief, /Periksa router\./); assert.match(env.brief, /Asia\/Jakarta/);
   const names = env.tools.map((t) => t.name);
-  for (const t of ["web_search", "mikrotik_rest", "make_presentation", "image_edit", "image_generate", "remember", "propose_mission", "consult_agent", "ask_user", "view_image", "save_to_drive"]) assert.ok(names.includes(t), `tool ${t} harus tersedia`);
+  for (const t of ["web_search", "mikrotik_rest", "make_presentation", "image_edit", "image_generate", "remember", "consult_agent", "ask_user", "view_image", "save_to_drive"]) assert.ok(names.includes(t), `tool ${t} harus tersedia`);
+  // misi kerja tidak boleh "menjadwalkan dirinya sendiri" — walau agent-nya mendaftarkan propose_mission
+  assert.ok(!names.includes("propose_mission"), "propose_mission hanya untuk misi belajar kebiasaan");
+  assert.match(env.brief, /jadwalnya sudah diatur sistem\. Kerjakan isinya SEKARANG/);
+  assert.match(env.system, /Laporan hanya boleh berisi hal yang benar-benar terjadi/);
   assert.ok(!names.includes("delegate_agent"));
   assert.ok(!names.includes("delete_drive_file"), "kemampuan yang belum disetujui admin tidak boleh muncul");
   assert.equal(new Set(names).size, names.length, "nama tool tidak boleh ganda (API menolak)");
