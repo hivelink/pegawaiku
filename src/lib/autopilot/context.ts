@@ -7,6 +7,7 @@ import type { Mission, Run, RunEnv, ToolCall } from "./types";
 import { isRouterWrite, routerBackup, routerSnapshot } from "./mikrotik-guard";
 import { notifyTelegram, parseTelegram } from "./notify";
 import { loadMemoryBlock } from "./memory";
+import { modelCandidates } from "./models";
 
 /** Agent bawaan untuk misi tanpa agent khusus. Dipasang oleh migrasi 0015. */
 export const ARKA_SLUG = "arka-asisten-otonom";
@@ -98,17 +99,20 @@ export async function buildEnv(sb: SupabaseClient, run: Run, mission: Mission): 
   if (!agent) throw new Error(mission.agent_id ? "Agent misi ini sudah tidak ada." : "Agent Arka belum terpasang — jalankan migrasi 0015_autopilot.sql.");
   const userId = mission.created_by ?? (org.owner_id as string);
 
-  // ---- model utama & cadangan (aturan sama dengan chat) ----
+  // ---- model: pilihan misi → rekomendasi agent → bawaan pekerja → model chat organisasi (lihat models.ts) ----
   const mk = (id: string): Active | null => {
     const { keyProvider, model } = splitModelId(id);
     const apiKey = keys[keyProvider] ?? (keyProvider === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined);
     return apiKey ? { keyProvider, model, apiKey, usesPlatformKey: keyProvider === "anthropic" && !keys.anthropic } : null;
   };
-  const primary = mk(process.env.AUTOPILOT_MODEL || (org.chat_model as string) || DEFAULT_MODEL);
+  const candidates = modelCandidates({ missionModel: mission.model, agentSlug: agent.slug, workerDefault: process.env.AUTOPILOT_MODEL, orgChatModel: org.chat_model as string | null, fallback: DEFAULT_MODEL });
+  const picked = candidates.map((c) => ({ ...c, active: mk(c.model) })).find((c) => c.active);
+  const primary = picked?.active ?? null;
   let fallback = org.fallback_model ? mk(String(org.fallback_model)) : null;
   if (fallback && primary && fallback.keyProvider === primary.keyProvider && fallback.model === primary.model) fallback = null;
   let active = primary ?? fallback;
   if (!active) throw new Error("Belum ada kunci API model yang bisa dipakai. Isi Pengaturan → Kunci API (mis. anthropic) atau set ANTHROPIC_API_KEY di pekerja.");
+  const modelLabel = picked ? `${picked.model} (${picked.source})` : `${String(org.fallback_model)} (model cadangan)`;
   let switched = false;
 
   // ---- percakapan tempat laporan disimpan (satu per misi) ----
@@ -186,7 +190,7 @@ export async function buildEnv(sb: SupabaseClient, run: Run, mission: Mission): 
   let backedUp = false;
 
   return {
-    system, brief, tools: toolsFor(active), approvalMode: mission.approval_mode, httpCapKeys: new Set(Object.keys(httpCaps)),
+    system, brief, tools: toolsFor(active), approvalMode: mission.approval_mode, httpCapKeys: new Set(Object.keys(httpCaps)), modelLabel,
 
     async llm(messages, _tools, maxTokens, signal) {
       const call = async (a: Active) => {

@@ -5,8 +5,9 @@ import { FormPending } from "@/components/ui/form-pending";
 import { describeSchedule } from "@/lib/autopilot/schedule";
 import { MISSION_TEMPLATES } from "@/lib/autopilot/templates";
 import type { Approval, MemoryItem, Mission, Run } from "@/lib/autopilot/types";
-import { addMemory, cancelRun, decideApproval, deleteMemory, missionAction, applyTemplate } from "./actions";
-import { MissionForm } from "./mission-form";
+import { addMemory, cancelRun, decideApproval, deleteMemory, missionAction, applyTemplate, setMissionModel } from "./actions";
+import { MissionForm, type ModelOption } from "./mission-form";
+import { recommendedModel, MODEL_TIERS } from "@/lib/autopilot/models";
 import { AutoRefresh, ProcessQueueButton } from "./live";
 
 const RUN_BADGE: Record<string, [string, string]> = {
@@ -26,7 +27,8 @@ const when = (iso: string | null | undefined, tz = "Asia/Jakarta") => {
 const isFresh = (iso: string) => Date.now() - new Date(iso).getTime() < 90_000;
 
 
-export type MissionRow = Mission & { agent: { display_name: string } | null };
+export type MissionRow = Mission & { agent: { display_name: string; slug: string } | null };
+const ARKA = "arka-asisten-otonom";
 export type ApprovalRow = Approval & { mission: { title: string } | null };
 export type RunRow = Pick<Run, "id" | "mission_id" | "status" | "trigger" | "steps" | "summary" | "error" | "credit_cost" | "created_at" | "finished_at"> & { mission: { title: string; conversation_id: string | null } | null };
 export type EventRow = { id: number; run_id: string; kind: string; label: string; created_at: string };
@@ -35,12 +37,16 @@ export type WorkerRow = { name: string; last_seen_at: string; info: Record<strin
 export type AsistenViewProps = {
   orgId: string; hasProject: boolean; isAdmin: boolean;
   missions: MissionRow[]; approvals: ApprovalRow[]; runs: RunRow[]; events: EventRow[]; memory: MemoryItem[];
-  agents: { id: string; name: string; title: string }[]; keys: string[]; worker?: WorkerRow;
+  agents: { id: string; slug: string; name: string; title: string }[]; keys: string[]; worker?: WorkerRow;
+  models: ModelOption[];
+  /** semua agent aktif, untuk tabel rekomendasi model */
+  catalog: { slug: string; name: string; title: string }[];
 };
 
 /** Tampilan halaman Asisten — murni dari props, agar bisa dirender tanpa database. */
-export function AsistenView({ orgId, hasProject, isAdmin, missions, approvals, runs, events: eventRows, memory, agents, keys: keyList, worker }: AsistenViewProps) {
+export function AsistenView({ orgId, hasProject, isAdmin, missions, approvals, runs, events: eventRows, memory, agents, keys: keyList, worker, models, catalog }: AsistenViewProps) {
   const keys = new Set(keyList);
+  const modelName = (id: string) => models.find((x) => x.id === id)?.name ?? id;
   const online = !!worker && isFresh(worker.last_seen_at);
   const proposed = missions.filter((m) => m.status === "proposed");
   const current = missions.filter((m) => m.status === "active" || m.status === "paused");
@@ -139,7 +145,7 @@ export function AsistenView({ orgId, hasProject, isAdmin, missions, approvals, r
       {hasProject && (
         <section className="space-y-3">
           <h2 className="font-bold">Beri misi baru</h2>
-          <Card className="p-4"><MissionForm agents={agents} /></Card>
+          <Card className="p-4"><MissionForm agents={agents} models={models} /></Card>
           <div className="grid gap-3 sm:grid-cols-2">
             {MISSION_TEMPLATES.filter((t) => !usedTemplates.has(t.title)).map((t) => (
               <Card key={t.key} className="flex items-start gap-3 p-4 text-sm">
@@ -179,6 +185,15 @@ export function AsistenView({ orgId, hasProject, isAdmin, missions, approvals, r
                       {m.last_run_at && <> · terakhir {when(m.last_run_at, m.tz)}</>}
                       {m.approval_mode === "all_writes" && " · semua perubahan minta izin"}
                     </div>
+                    <form action={setMissionModel} className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                      <input type="hidden" name="id" value={m.id} />
+                      <span className="text-muted">Model:</span>
+                      <select name="model" defaultValue={m.model ?? ""} className="h-7 max-w-56 rounded-md border border-border bg-card px-1.5 text-xs" aria-label={`Model AI untuk ${m.title}`}>
+                        <option value="">Rekomendasi: {modelName(recommendedModel(m.agent?.slug ?? ARKA).model)}</option>
+                        {models.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                      </select>
+                      <button className="rounded-md border border-border px-1.5 py-0.5 font-semibold hover:bg-slate-100"><FormPending size={10} />Simpan</button>
+                    </form>
                   </div>
                   <form action={missionAction} className="flex flex-wrap items-center gap-1.5">
                     <input type="hidden" name="id" value={m.id} />
@@ -230,6 +245,28 @@ export function AsistenView({ orgId, hasProject, isAdmin, missions, approvals, r
           </Card>
         )}
       </section>
+
+      {/* ---------- Rekomendasi model per agent ---------- */}
+      <details className="rounded-2xl border border-border bg-card p-4 text-sm">
+        <summary className="cursor-pointer font-bold">Model AI tiap agent</summary>
+        <p className="mt-2 text-xs text-muted">
+          Setiap misi memakai model rekomendasi agent-nya, kecuali Anda memilih model lain di misi itu. <b>{modelName(MODEL_TIERS.hemat)}</b> untuk pekerjaan rutin dan berpola (paling hemat yang tetap andal memakai tool); <b>{modelName(MODEL_TIERS.standar)}</b> untuk tulisan, riset, strategi, dan perhitungan. Model gratis bisa dipilih per misi, tetapi kuotanya terbatas dan kurang andal untuk kerja tanpa diawasi.
+        </p>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[520px] text-xs">
+            <thead><tr className="text-left text-muted"><th className="py-1 pr-2">Agent</th><th className="py-1 pr-2">Model</th><th className="py-1">Alasan</th></tr></thead>
+            <tbody>
+              {catalog.map((a) => { const r = recommendedModel(a.slug); return (
+                <tr key={a.slug} className="border-t border-border align-top">
+                  <td className="py-1 pr-2 font-semibold whitespace-nowrap">{a.name}<span className="block font-normal text-muted">{a.title}</span></td>
+                  <td className="py-1 pr-2 whitespace-nowrap"><span className={`rounded-md px-1.5 text-[10px] font-bold uppercase ${r.tier === "hemat" ? "bg-emerald-100 text-emerald-700" : "bg-sky-100 text-sky-800"}`}>{r.tier}</span> {modelName(r.model)}</td>
+                  <td className="py-1 text-slate-600">{r.why}</td>
+                </tr>
+              ); })}
+            </tbody>
+          </table>
+        </div>
+      </details>
 
       {/* ---------- Memori ---------- */}
       <section className="space-y-2">

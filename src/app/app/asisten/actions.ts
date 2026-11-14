@@ -35,6 +35,17 @@ async function ctxAdmin() {
 }
 
 const done = () => { revalidatePath("/app/asisten"); revalidatePath("/app", "layout"); };
+
+/** "" = rekomendasi agent (null). Selain itu harus model teks aktif di katalog ai_models. */
+async function checkModel(supabase: Awaited<ReturnType<typeof ctxOrg>>["supabase"], raw: string): Promise<string | null> {
+  const id = raw.trim();
+  if (!id) return null;
+  const { data } = await supabase.from("ai_models").select("id").eq("id", id).eq("kind", "text").eq("is_active", true).maybeSingle();
+  if (!data) throw new Error(`Model "${id}" tidak ada di katalog model teks.`);
+  return id;
+}
+
+const MODEL_MIGRATION_HINT = "Pilihan model per misi butuh migrasi 0017_mission_model.sql — jalankan di Pengaturan → Pembaruan.";
 const firstRun = (kind: Mission["schedule_kind"], schedule: Mission["schedule"], tz: string) => (kind === "once" ? new Date() : nextRunAt(kind, schedule, tz, new Date()))?.toISOString() ?? null;
 
 async function _createMission(fd: FormData) {
@@ -52,13 +63,16 @@ async function _createMission(fd: FormData) {
   if (typeof sched === "string") throw new Error(sched);
   const tz = isValidTz(String(fd.get("tz") ?? "")) ? String(fd.get("tz")) : DEFAULT_TZ;
   const agentId = String(fd.get("agent_id") ?? "") || null;
+  const model = await checkModel(supabase, String(fd.get("model") ?? ""));
   const once = sched.kind === "once";
   const { data: m, error } = await supabase.from("auto_missions").insert({
     org_id: org.id, project_id: project.id, agent_id: agentId, kind: "task", title, instructions,
     schedule_kind: sched.kind, schedule: sched.schedule, tz,
     approval_mode: fd.get("approval_mode") === "all_writes" ? "all_writes" : "sensitive",
     status: "active", source: "user", next_run_at: once ? null : firstRun(sched.kind, sched.schedule, tz), created_by: user.id,
+    ...(model ? { model } : {}), // kolom dari migrasi 0017; hanya dikirim bila user memilih model khusus
   }).select("id").single();
+  if (error && /column.*model|model.*column|schema cache/i.test(error.message)) throw new Error(MODEL_MIGRATION_HINT);
   if (error || !m) throw new Error(error?.message ?? "Misi tidak tersimpan");
   // misi sekali jalan langsung masuk antrean (terlihat di riwayat walau belum ada pekerja yang aktif)
   if (once) {
@@ -167,7 +181,17 @@ async function _deleteMemory(fd: FormData) {
   done();
 }
 
+/** Ganti model sebuah misi. "" = kembali ke rekomendasi agent. */
+async function _setMissionModel(fd: FormData) {
+  const { supabase, org } = await ctxOrg();
+  const model = await checkModel(supabase, String(fd.get("model") ?? ""));
+  const { error } = await supabase.from("auto_missions").update({ model }).eq("id", String(fd.get("id"))).eq("org_id", org.id);
+  if (error) throw new Error(/column|schema cache/i.test(error.message) ? MODEL_MIGRATION_HINT : error.message);
+  done();
+}
+
 export const createMission = guarded("createMission", _createMission);
+export const setMissionModel = guarded("setMissionModel", _setMissionModel);
 export const applyTemplate = guarded("applyTemplate", _applyTemplate);
 export const missionAction = guarded("missionAction", _missionAction);
 export const cancelRun = guarded("cancelRun", _cancelRun);

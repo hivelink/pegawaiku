@@ -53,7 +53,7 @@ test("jaringan: pemantauan hanya membaca router, menghitung laju, dan menilai sw
   const probe: Probe = async (host) => (host === "192.168.10.2" ? { ok: true, ms: 4 } : { ok: false, ms: 3000, error: "tidak menjawab (timeout)" });
   let now = 1_000_000;
   assert.equal(await monitorOnce({ sb: f.sb, probe, now: () => now }), 4);
-  assert.ok(calls.every((c) => c.method === "GET"), "pemantauan tidak boleh mengubah router");
+  assert.ok(calls.every((c) => c.method === "GET" || (c.method === "POST" && c.path === "/ping")), "pemantauan hanya membaca router (dan ping)");
 
   const r = statusOf(f, "r1"); const data = r.data as { identity: string; cpu: number; interfaces: Row[]; leases: Row[]; hotspot: Row[]; hotspot_available: boolean };
   assert.equal(r.online, true); assert.equal(data.identity, "Rumah"); assert.equal(data.cpu, 7);
@@ -78,7 +78,7 @@ test("jaringan: router mati atau hotspot belum ada tidak menjatuhkan pemantauan"
   const d = statusOf(f, "r1").data as { hotspot_available: boolean; hotspot: Row[] };
   assert.equal(d.hotspot_available, false); assert.deepEqual(d.hotspot, []);
   // switch yang port web-nya mati tetapi masih ada di ARP router dianggap hidup, dengan catatan
-  assert.equal(statusOf(f, "s1").online, true); assert.match(String(statusOf(f, "s1").error), /router masih melihat/);
+  assert.equal(statusOf(f, "s1").online, true); assert.match(String(statusOf(f, "s1").error), /router masih melihat/i);
 
   globalThis.fetch = (async () => { throw new Error("connect ETIMEDOUT"); }) as typeof fetch;
   f = db();
@@ -141,4 +141,40 @@ test("jaringan: agent bisa membaca ringkasan jaringan (tool hanya-baca)", async 
   assert.match(out, /Interface hidup: ether1[\s\S]*ether3 \(dinonaktifkan\)[\s\S]*Klien DHCP aktif: 1 \(dhcp-rumah: 1\)/);
   assert.match(out, /## AP — ap[\s\S]*belum pernah dipantau/);
   assert.equal(f.writes.length, 0);
+});
+
+test("jaringan: perangkat di balik firewall antar-VLAN dicek lewat ping dari router", async () => {
+  // HSAirPo (10.5): pekerja tidak bisa menjangkau port-nya dan router belum punya alamatnya di ARP → router yang ping
+  const ok = [
+    { seq: "0", host: "192.168.10.5", time: "1ms", ttl: "64", sent: "1", received: "1", "packet-loss": "0" },
+    { seq: "1", host: "192.168.10.5", time: "2ms", ttl: "64", sent: "2", received: "2", "packet-loss": "0", "min-rtt": "1ms", "avg-rtt": "1ms500us", "max-rtt": "2ms" },
+  ];
+  const calls = router({ "/ping": ok });
+  let f = db();
+  await monitorOnce({ sb: f.sb, probe: async (h) => (h === "192.168.10.2" ? { ok: true, ms: 4 } : { ok: false, ms: 3000, error: "tidak menjawab (timeout)" }) });
+  assert.deepEqual([statusOf(f, "s2").online, statusOf(f, "s2").latency_ms, statusOf(f, "s2").seen_by_router, statusOf(f, "s2").error], [true, 2, true, null]);
+  const pings = calls.filter((c) => c.path === "/ping");
+  assert.equal(pings.length, 1, "hanya perangkat yang tidak terjangkau yang di-ping (Ruijie menjawab langsung, AP tanpa IP)");
+  assert.deepEqual(JSON.parse(pings[0].body!), { address: "192.168.10.5", count: "2" });
+
+  // tidak ada balasan ping → mati, dengan alasan yang jelas
+  router({ "/ping": [{ seq: "0", host: "192.168.10.5", status: "timeout", sent: "2", received: "0", "packet-loss": "100" }] });
+  f = db();
+  await monitorOnce({ sb: f.sb, probe: async () => ({ ok: false, ms: 3000, error: "timeout" }) });
+  assert.equal(statusOf(f, "s2").online, false); assert.match(String(statusOf(f, "s2").error), /Tidak menjawab ping dari router/);
+
+  // user router tanpa izin "test" → pesan yang menunjukkan perbaikannya
+  const base = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => String(url).endsWith("/rest/ping")
+    ? new Response('{"detail":"not enough permissions (9)","error":500,"message":"Internal Server Error"}', { status: 500 })
+    : base(url, init)) as typeof fetch;
+  f = db();
+  await monitorOnce({ sb: f.sb, probe: async () => ({ ok: false, ms: 3000, error: "timeout" }) });
+  assert.match(String(statusOf(f, "s2").error), /izin "test"/);
+});
+
+test("jaringan: waktu ping RouterOS terbaca ke milidetik", async () => {
+  const { parseRtt } = await import("../src/lib/network/monitor");
+  assert.equal(parseRtt("1ms"), 1); assert.equal(parseRtt("12ms450us"), 12); assert.equal(parseRtt("450us"), 1); assert.equal(parseRtt("1s20ms"), 1020);
+  assert.equal(parseRtt(undefined), null); assert.equal(parseRtt("timeout"), null);
 });
